@@ -265,6 +265,10 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .pxstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
 .pxstat { background: var(--sunk); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
 .pxstat .v { font: 500 22px/1.1 var(--f-mono); }
+.emhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
+#emove { display: grid; gap: 12px; }
+.emchart { max-width: 760px; width: 100%; }
+#emove .muted { color: var(--muted); }
 .pxstat .foot { font: 11.5px/1.3 var(--f-mono); color: var(--muted); }
 .pxread { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12.5px/1.4 var(--f-mono); color: var(--muted); min-height: 18px; font-variant-numeric: tabular-nums; }
 .pxread b { color: var(--ink); font-weight: 600; }
@@ -721,7 +725,7 @@ function barChart(labels, series, opts = {}) {
     }
     const hasTxt = opts.annotText && opts.annotText[i];
     if (hasTxt || (opts.annot && isNum(opts.annot[i]))) {
-      const top = stacked ? Y(series.reduce((t, s) => t + Math.max(0, n0(s.values[i])), 0)) : Y(Math.max(...series.map(s => n0(s.values[i])), opts.marks && isNum(opts.marks[i]) ? opts.marks[i] : -Infinity, opts.marks2 && isNum(opts.marks2[i]) ? opts.marks2[i] : -Infinity));
+      const top = stacked ? Y(series.reduce((t, s) => t + Math.max(0, n0(s.values[i])), 0)) : Y(Math.max(0, ...series.map(s => n0(s.values[i])), opts.marks && isNum(opts.marks[i]) ? opts.marks[i] : -Infinity, opts.marks2 && isNum(opts.marks2[i]) ? opts.marks2[i] : -Infinity));
       if (hasTxt) {
         const lines = [].concat(opts.annotText[i]);
         lines.forEach((ln, k) => { g += `<text x="${x + w / 2}" y="${top - 6 - (lines.length - 1 - k) * 12}" text-anchor="middle" style="fill:var(${ln.tone === "pos" ? "--pos" : ln.tone === "neg" ? "--neg" : ln.tone === "ink" ? "--ink" : "--muted"});font-weight:${ln.bold ? 600 : 500};font-size:9.8px">${esc(ln.t)}</text>`; });
@@ -937,7 +941,7 @@ function render(d) {
   if (STATE.tab === "peers") renderPeers();
   if (STATE.px && STATE.px.open) renderPx(false);
   if (STATE.chatOpen) renderChat();
-  wireGuidance(); loadGuidanceNews(d.symbol);
+  wireGuidance(); loadGuidanceNews(d.symbol); loadEarningsMoves(d);
   const dr = document.querySelectorAll(".drivers details"), allBtn = document.getElementById("insAll");
   const syncAll = () => { if (allBtn) allBtn.textContent = [...dr].every(x => x.open) ? "Collapse all" : "Expand all"; };
   dr.forEach(x => x.addEventListener("toggle", () => { x.open ? STATE.insOpen.add(x.dataset.k) : STATE.insOpen.delete(x.dataset.k); syncAll(); }));
@@ -1384,6 +1388,7 @@ function forecastSection(d) {
     ${ph ? `<div class="panel"><h4><span>Estimates vs actuals</span><button type="button" class="btn ghost sm" data-pxmode="general">Price chart</button></h4>
       <p class="note">Click a row to see how the stock traded ±30 days around that report. Est. and Actual ${mode === "qoq" ? "QoQ compare each figure with the row below it (the previous quarter)" : "YoY compare each figure with the same quarter a year earlier"}, estimate with estimate and actual with actual. Switch with the Compare control at the top.</p>${ph}</div>` : ""}
     <div class="panel pxpanel" id="pxPanel" hidden></div>
+    <div class="panel"><h4>Earnings-day move <small>how the share price reacted to each report · click a bar for its chart</small></h4><div id="emove"><div class="skel" style="height:120px"></div></div></div>
     <div class="grid2">${annual}<div class="panel"><h4>How the model works</h4>${method}</div></div>
     ${sp}
   </section>`;
@@ -1732,6 +1737,63 @@ function ansGuidance(d) {
     o.guide && o.guide.rev ? `Company guidance ${money(o.guide.rev.lo, cur)}–${money(o.guide.rev.hi, cur)}; consensus is ${pct(o.guide.rev.vsCons)} vs the midpoint.` : `No company guidance saved. FMP doesn't carry it on your plan; add it in the ${o.label} outlook section.`
   ];
   return { html: `<p><b>${o.label} consensus revenue ${money(o.cons.rev, cur)}</b>, ${pct(o.consRevG)} vs ${o.prevLabel}.</p>` + ul(lines) };
+}
+
+/* ============ earnings-day moves ============ */
+// move = close on the last trading day before the report date -> close on the first trading day after it.
+// This two-session window captures the reaction whether results came out before the open or after the close.
+async function loadEarningsMoves(d) {
+  const box = document.getElementById("emove"); if (!box || !d.fc) return;
+  if (!d.moves) {
+    const reps = (d.fc.er || []).filter(e => isNum(e.revenueActual) || isNum(e.epsActual)).filter(e => e.date <= todayISO());
+    if (!reps.length) { box.innerHTML = `<p class="note">No past earnings dates are available.</p>`; return; }
+    try {
+      const px = await prices(d.symbol, addDays(reps[0].date, -10), [addDays(reps[reps.length - 1].date, 10), todayISO()].sort()[0]);
+      if (STATE.d !== d) return;
+      const rowFor = e => { const t = Date.parse(e.date), q = d.inc; for (let i = q.length - 1; i >= 0; i--) { const t0 = Date.parse(q[i].date), t1 = i < q.length - 1 ? Date.parse(q[i + 1].date) : t0 + 110 * 864e5; if (t > t0 && t <= t1) return i; } return -1; };
+      d.moves = reps.map(e => {
+        let c0 = null, a1 = null;
+        for (const r of px) { if (r.date < e.date) c0 = r; else if (r.date > e.date) { a1 = r; break; } }
+        const i = rowFor(e);
+        return { date: e.date, label: i >= 0 ? d.inc[i].label : fmtDate(e.date), move: c0 && a1 ? growth(a1.close, c0.close) : null, from: c0, to: a1,
+          revS: growth(e.revenueActual, e.revenueEstimated), epsS: growth(e.epsActual, e.epsEstimated) };
+      }).filter(m => isNum(m.move));
+    } catch (err) { box.innerHTML = `<p class="note">Couldn't load prices: ${esc(err.message)}</p>`; return; }
+  }
+  renderMoves(d);
+}
+
+function moveStats(list) {
+  const mv = list.map(m => m.move), up = list.filter(m => m.move > 0), dn = list.filter(m => m.move < 0);
+  const beats = list.filter(m => isNum(m.revS) && m.revS > 0), misses = list.filter(m => isNum(m.revS) && m.revS <= 0);
+  return { n: list.length, avgAbs: mean(mv.map(Math.abs)), avg: mean(mv), up: up.length, dn: dn.length, avgUp: mean(up.map(m => m.move)), avgDn: mean(dn.map(m => m.move)),
+    best: [...list].sort((a, b) => b.move - a.move)[0], worst: [...list].sort((a, b) => a.move - b.move)[0],
+    beats: beats.length, beatAvg: mean(beats.map(m => m.move)), misses: misses.length, missAvg: mean(misses.map(m => m.move)) };
+}
+
+function renderMoves(d) {
+  const box = document.getElementById("emove"); if (!box || !d.moves) return;
+  const all = d.moves, n = all.length;
+  const wins = [...[["1Y", 4], ["2Y", 8], ["3Y", 12]].filter(w => w[1] < n), ["All", n]];
+  let win = STATE.moveWin || "All"; if (!wins.some(w => w[0] === win)) win = "All";
+  const k = wins.find(w => w[0] === win)[1], list = all.slice(-k), s = moveStats(list);
+  const span = list.length ? `${list[0].label} to ${list[list.length - 1].label}` : "";
+  const dir = s.up > s.dn ? "up" : s.dn > s.up ? "down" : "split";
+  const tile = (lab, big, sub, c) => `<div class="pxstat"><span class="eyebrow">${lab}</span><span class="v ${c || ""}">${big}</span><span class="foot">${sub}</span></div>`;
+  const nextLine = d.fc && d.fc.date && d.fc.date >= todayISO() ? `<p class="note">Next report ${esc(fmtDate(d.fc.date))}. On this history the stock typically moves about <b>±${pctPlain(s.avgAbs)}</b> on results, ${s.up === s.dn ? "with no clear direction" : `more often ${dir} (${Math.max(s.up, s.dn)} of ${s.n})`}.</p>` : "";
+  box.innerHTML = `
+    <div class="emhead"><span class="note">Averaged over the last <b>${s.n} report${s.n === 1 ? "" : "s"}</b> (${esc(span)})</span>
+      <div class="seg" role="group" aria-label="Period to average">${wins.map(([lab, kk]) => `<button type="button" data-mw="${lab}" aria-pressed="${lab === win}">${lab === "All" ? `All (${n})` : lab}</button>`).join("")}</div></div>
+    <div class="pxstats">
+      ${tile("Average move (size)", `±${pctPlain(s.avgAbs)}`, "average of the absolute moves, up or down")}
+      ${tile("Average move (direction)", pct(s.avg), s.avg >= 0 ? "net tendency is to rise" : "net tendency is to fall", cls(s.avg))}
+      ${tile("Up / down", `${s.up} <span class="muted">/</span> ${s.dn}`, `up avg ${pct(s.avgUp)} · down avg ${pct(s.avgDn)}`)}
+      ${tile("Best / worst", `<span class="${cls(s.best && s.best.move)}">${pct(s.best && s.best.move)}</span> <span class="muted">/</span> <span class="${cls(s.worst && s.worst.move)}">${pct(s.worst && s.worst.move)}</span>`, `${s.best ? esc(s.best.label) : "—"} · ${s.worst ? esc(s.worst.label) : "—"}`)}
+    </div>
+    <p class="note">On revenue beats (${s.beats}): average ${pct(s.beatAvg)}. On misses or in-line (${s.misses}): average ${pct(s.missAvg)}. Move is the close before the report to the close after it, so it captures results released before the open or after the close.</p>
+    ${nextLine}
+    <div class="chart emchart">${barChart(list.map(m => m.label), [{ name: "Earnings move", color: "var(--accent)", values: list.map(m => m.move) }], { fills: list.map(m => m.move >= 0 ? "var(--pos)" : "var(--neg)"), annotText: list.map(m => [{ t: pct(m.move, 1), tone: m.move >= 0 ? "pos" : "neg", bold: true }]), clickKeys: list.map(m => m.date), fmt: v => pctPlain(v, 0), title: "Share-price move on each earnings report" })}</div>`;
+  box.querySelectorAll("[data-mw]").forEach(b => b.addEventListener("click", () => { STATE.moveWin = b.dataset.mw; store.set("moveWin", b.dataset.mw); renderMoves(d); }));
 }
 
 /* ============ peers ============ */
@@ -2643,6 +2705,7 @@ async function askLocal(question) {
   });
   STATE.incMode = store.get("incMode") || "values";
   STATE.cmp = store.get("cmpMode") === "yoy" ? "yoy" : "qoq";
+  STATE.moveWin = store.get("moveWin") || "All";
   const cmpBtns = document.querySelectorAll("#cmpSeg button");
   const syncCmp = () => cmpBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === STATE.cmp)));
   syncCmp();
