@@ -1261,7 +1261,7 @@ function forecastSection(d) {
   const card = (eyebrow, big, rows, foot) => `<div class="fc"><span class="eyebrow">${eyebrow}</span><span class="v">${big}</span>${rows ? `<span class="d">${rows}</span>` : ""}${foot ? `<span class="foot">${foot}</span>` : ""}</div>`;
   // estimates are expectations, not results: show implied changes in neutral chips
   const ichip = v => `<span class="chip imp">${pct(v)}</span>`;
-  const chips = (qq, yy) => `<span>Implied QoQ ${ichip(qq)}</span><span>YoY ${ichip(yy)}</span>`;
+  const chips = () => "";
   const cards = [
     card(`Consensus revenue · ${esc(f.label)}`, money(f.cRev, cur), isNum(f.cRev) ? chips(f.cRevQoQ, f.cRevYoY) : "", isNum(f.cRev) ? `vs ${esc(f.L.label)} actual of ${money(f.L.revenue, d.currency)}${isNum(f.L.revYoY) ? `, which grew ${pct(f.L.revYoY)} YoY` : ""}` : "No estimate in the data"),
     card("Consensus EPS", isNum(f.cEps) ? f.cEps.toFixed(2) : "—", isNum(f.cEps) ? chips(f.cEpsQoQ, f.cEpsYoY) : "", isNum(f.cEps) ? `vs ${esc(f.L.label)} actual of ${f.hist.length && isNum(f.hist[f.hist.length - 1].eps) ? f.hist[f.hist.length - 1].eps.toFixed(2) : "—"} (EPS as reported against estimates)` : ""),
@@ -1277,7 +1277,7 @@ function forecastSection(d) {
   const fills = labels.map((_, i) => i >= estFrom ? "var(--accent-soft)" : "var(--accent)");
   const surpriseTxt = (s2, est, fmtE) => isNum(s2) ? [{ t: `${s2 >= 0 ? "Beat" : "Miss"} ${pct(s2, 1)}`, tone: s2 >= 0 ? "pos" : "neg", bold: true }, { t: `est ${fmtE(est)}` }] : null;
   const prevRev = f.L.revenue, prevEps = f.hist.length ? f.hist[f.hist.length - 1].eps : null;
-  const expTxt = (v, base, yaBase, fmtV) => { if (!isNum(v)) return null; const g2 = mode === "qoq" ? growth(v, base) : growth(v, yaBase); return [{ t: "Exp " + fmtV(v), bold: true, tone: "ink" }, { t: isNum(g2) ? `${pct(g2, 1)} ${mode === "qoq" ? "QoQ" : "YoY"}` : "" }, { t: isNum(g2) ? "(implied)" : "" }]; };
+  const expTxt = (v, base, yaBase, fmtV) => { if (!isNum(v)) return null; const g2 = mode === "qoq" ? growth(v, base) : growth(v, yaBase); return [{ t: "Expected", tone: "ink" }, { t: fmtV(v), bold: true, tone: "ink" }]; };
   const yaFor = (u, k) => { const m0 = /Q(\d) FY(\d\d)/.exec(u.label); if (m0 && k === "epsDiluted") { const h = f.hist.find(x => x.label === `Q${m0[1]} FY${String(+m0[2] - 1).padStart(2, "0")}`); if (h && isNum(h.eps)) return h.eps; } const q2 = d.inc; const m = /Q(\d) FY(\d\d)/.exec(u.label); if (!m) return null; const r = q2.find(x => x.period === "Q" + m[1] && String(x.fiscalYear).slice(-2) === String(+m[2] - 1).padStart(2, "0")); return r ? r[k] : null; };
 
   // revenue
@@ -1296,9 +1296,9 @@ function forecastSection(d) {
   const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Upcoming quarter (consensus, not yet reported)", color: "var(--accent-soft)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
   const trackTxt = t => t ? `beat ${t.beats} of ${t.n}` : "";
   const chart = `<div class="panel"><h4>Revenue: actual vs expectations <small>${esc(trackTxt(f.chartTrack.rev))} · click a quarter for its price chart</small></h4>${lg(revModel.some(isNum))}
-      <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 26, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
+      <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
   const epsChart = `<div class="panel"><h4>EPS: actual vs expectations <small>${esc(trackTxt(f.chartTrack.eps))}</small></h4>${lg(epsModel.some(isNum))}
-      <div class="chart">${barChart(labels, [{ name: "EPS", color: "var(--accent)", values: epsVals }], { clickKeys, annotText: epsTxt, fills, marks: epsMarks, markName: "Consensus", marks2: epsModel, mark2Name: "Model", estFrom, topPad: 26, fmt: v => v.toFixed(2), title: "EPS actual vs expectations" })}</div></div>`;
+      <div class="chart">${barChart(labels, [{ name: "EPS", color: "var(--accent)", values: epsVals }], { clickKeys, annotText: epsTxt, fills, marks: epsMarks, markName: "Consensus", marks2: epsModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => v.toFixed(2), title: "EPS actual vs expectations" })}</div></div>`;
 
   // annual + target
   const an = f.annual && f.annual.length ? `<div class="tbl"><table><thead><tr><th>Consensus</th>${f.annual.map(a => `<th>${esc(a.label)}</th>`).join("")}</tr></thead><tbody>
@@ -1320,7 +1320,7 @@ function forecastSection(d) {
   let upBase = f.L.revenue;
   const upCalc = f.ups.map(u => { const base = mode === "qoq" ? upBase : yaRev(u.label); const g = growth(u.revenueEstimated, base); if (isNum(u.revenueEstimated)) upBase = u.revenueEstimated; return { ...u, estG: g }; });
   const gcell = v => `<td class="${cls(v)}">${pct(v)}</td>`;
-  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td><td>${pct(u.estG)} <span class="imptag">implied</span></td><td>upcoming</td><td></td><td></td>
+  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td><td></td><td>upcoming</td><td></td><td></td>
       <td>${isNum(u.epsEstimated) ? u.epsEstimated.toFixed(2) : "—"}</td><td>upcoming</td><td></td></tr>`).reverse().join("");
   const pastRows = [...f.past].reverse().map(e => {
     const i = e.rowIdx, bi = i >= 0 ? (mode === "qoq" ? i - 1 : yearAgoIdx(d.inc, i)) : -1;
