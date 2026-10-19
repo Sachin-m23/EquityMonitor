@@ -1,0 +1,1747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Equity Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a sticky ticker bar, then summary-first reading order — verdict, KPIs, then each statement with its chart beside its table. */
+:root {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --sunk: #e9ebe6;
+  --line: #d6d9d2;
+  --ink: #171a17;
+  --muted: #5d635b;
+  --accent: #1f5c4a;
+  --accent-soft: #dce9e3;
+  --c1: #1f5c4a; --c2: #c27a2c; --c3: #3d6fb0; --c4: #8a4f9e; --c5: #b8484e; --c6: #6e8a2e; --c7: #4a8c95; --c8: #8c7a5b;
+  --pos: #1d7a45; --pos-soft: #ddf0e3;
+  --neg: #b23a32; --neg-soft: #f7e0dd;
+  --neu: #6a6f68; --neu-soft: #eceee9;
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111412; --surface: #191d1a; --sunk: #222723; --line: #323832; --ink: #e8ebe6; --muted: #9aa197;
+    --accent: #6fc2a3; --accent-soft: #1f3a31;
+    --c1: #6fc2a3; --c2: #e0a25e; --c3: #7aa6e0; --c4: #c08ad1; --c5: #e07f84; --c6: #a7c464; --c7: #78c0c9; --c8: #c4b08a;
+    --pos: #5cc98a; --pos-soft: #1b3326; --neg: #ee7b72; --neg-soft: #3a211f; --neu: #a0a69d; --neu-soft: #262b27;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* top bar */
+.bar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding-block: 12px; }
+.brand { font: 600 15px/1 var(--f-display); letter-spacing: .01em; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand i { width: 10px; height: 10px; background: var(--accent); display: inline-block; transform: rotate(45deg); }
+.search { position: relative; flex: 1 1 320px; display: flex; gap: 8px; min-width: 0; }
+.search input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; font-family: var(--f-mono); text-transform: uppercase; letter-spacing: .04em; }
+.search input::placeholder { text-transform: none; letter-spacing: 0; font-family: var(--f-body); color: var(--muted); }
+.btn { height: 40px; padding: 0 16px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--surface); font-weight: 600; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); font-weight: 500; }
+.btn:focus-visible, input:focus-visible, select:focus-visible, .seg button:focus-visible, .sugg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sugg { position: absolute; top: 44px; left: 0; right: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgb(0 0 0 / .12); overflow: hidden; z-index: 30; }
+.sugg button { display: flex; width: 100%; gap: 12px; align-items: baseline; padding: 9px 12px; background: none; border: 0; text-align: left; cursor: pointer; }
+.sugg button:hover, .sugg button.on { background: var(--sunk); }
+.sugg b { font-family: var(--f-mono); font-weight: 500; min-width: 64px; }
+.sugg span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.keyrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-bottom: 12px; }
+.keyrow input { height: 34px; padding: 0 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; font-family: var(--f-mono); font-size: 13px; width: min(360px, 100%); }
+.keyrow small { color: var(--muted); }
+
+main { padding-block: 28px 64px; display: grid; gap: 40px; }
+.status { padding: 14px 16px; border-radius: 6px; background: var(--sunk); color: var(--muted); }
+.status.err { background: var(--neg-soft); color: var(--neg); }
+
+/* company header */
+.co { display: grid; grid-template-columns: 1fr auto; gap: 16px 32px; align-items: end; }
+.co h1 { font: 700 clamp(28px, 4.4vw, 44px)/1.05 var(--f-display); margin: 0; letter-spacing: -.015em; text-wrap: balance; }
+.co .tick { font-family: var(--f-mono); font-size: 14px; color: var(--muted); margin-bottom: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+.co .tick b { color: var(--accent); font-weight: 500; }
+.price { text-align: right; font-family: var(--f-mono); }
+.price .p { font-size: 26px; }
+.price .m { color: var(--muted); font-size: 13px; }
+@media (max-width: 640px) { .co { grid-template-columns: 1fr; } .price { text-align: left; } }
+
+/* section heads */
+.sec { display: grid; gap: 16px; }
+.sec-h { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 10px 20px; border-top: 2px solid var(--ink); padding-top: 12px; }
+.sec-h h2 { font: 600 22px/1.15 var(--f-display); margin: 0; letter-spacing: -.005em; }
+.sec-h p { margin: 4px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }
+.eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+
+/* verdict */
+.verdict { font: 500 clamp(18px, 2.2vw, 22px)/1.45 var(--f-display); max-width: 62ch; margin: 0; text-wrap: pretty; }
+.insights { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.ins { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: 4px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.ins.pos { border-left-color: var(--pos); }
+.ins.neg { border-left-color: var(--neg); }
+.ins.neu { border-left-color: var(--neu); }
+.ins .tag { font: 500 10.5px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ins h3 { margin: 0; font: 600 16px/1.3 var(--f-display); }
+.ins p { margin: 0; color: var(--muted); font-size: 14px; }
+.ins p b { color: var(--ink); font-weight: 600; }
+
+/* KPI strip */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.kpi { padding: 14px 16px; border-right: 1px solid var(--line); display: grid; gap: 4px; min-width: 0; }
+.kpi:last-child { border-right: 0; }
+.kpi .v { font: 500 22px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.kpi .d { font: 12.5px/1.3 var(--f-mono); color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+
+.chip { font: 500 12px/1 var(--f-mono); padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
+.up { color: var(--pos); } .dn { color: var(--neg); }
+.chip.up { background: var(--pos-soft); } .chip.dn { background: var(--neg-soft); }
+
+/* panels */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+.panel h4 { margin: 0; font: 600 14px/1.2 var(--f-display); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.panel h4 small { font: 400 12px var(--f-body); color: var(--muted); }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { font-family: var(--f-mono); fill: var(--muted); font-size: 10.5px; }
+.chart .gl { stroke: var(--line); stroke-width: 1; }
+.chart .zero { stroke: var(--muted); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* segmented control */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); flex-wrap: wrap; }
+.seg button { border: 0; background: none; padding: 7px 12px; font-size: 13px; cursor: pointer; color: var(--muted); border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td { font-family: var(--f-mono); font-size: 13px; }
+th { font: 500 11.5px/1.2 var(--f-mono); color: var(--muted); letter-spacing: .03em; border-bottom: 1px solid var(--line); background: var(--sunk); position: sticky; top: 0; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); font-family: var(--f-body); font-size: 13.5px; z-index: 1; }
+th:first-child { background: var(--sunk); z-index: 2; }
+tr + tr td { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+tr.strong td { font-weight: 600; }
+tr.strong td:first-child { font-weight: 600; }
+tr.sub td:first-child { padding-left: 24px; color: var(--muted); }
+tr.grp td { background: var(--sunk); font: 500 11px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-top: 10px; padding-bottom: 8px; }
+td.na { color: var(--muted); }
+td .sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 8px; vertical-align: 1px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 80ch; }
+.note b { color: var(--ink); font-weight: 600; }
+
+/* balance sheet map */
+.bsmap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bscol { display: grid; gap: 6px; }
+.bscol .lbl { font: 500 11px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+.stack { display: flex; flex-direction: column; height: 300px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.stack div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; color: #fff; font-size: 12px; min-height: 0; overflow: hidden; white-space: nowrap; }
+.stack div span:last-child { font-family: var(--f-mono); }
+
+.cmp { display: flex; align-items: center; gap: 8px; }
+.seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* segment growth breakdown */
+.gblock { display: grid; gap: 14px; }
+.gblock + .gblock { margin-top: 18px; }
+.ghead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.ghead h3 { margin: 0; font: 600 18px/1.2 var(--f-display); }
+.ghead select { height: 32px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 0 8px; font-size: 13px; }
+.gsum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+.gsum .big { font: 500 clamp(28px, 4vw, 38px)/1 var(--f-mono); letter-spacing: -.02em; }
+.gsum .cap { color: var(--muted); font-size: 14px; max-width: 60ch; }
+.gsum .cap b { color: var(--ink); font-weight: 600; }
+.banner { background: var(--neu-soft); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; font-size: 13.5px; color: var(--muted); }
+.banner b { color: var(--ink); }
+.bridge { display: grid; gap: 7px; }
+.br { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr) minmax(0, 150px); gap: 10px; align-items: center; font-size: 13px; }
+.br .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br.tot .nm { font-weight: 600; }
+.br .track { position: relative; height: 20px; background: var(--sunk); border-radius: 3px; }
+.br .track i { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; }
+.br .vals { font-family: var(--f-mono); font-size: 12.5px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.br .vals b { font-weight: 600; margin-left: 6px; }
+@media (max-width: 560px) { .br { grid-template-columns: minmax(0, 1fr) auto; } .br .track { grid-column: 1 / -1; grid-row: 2; } }
+.dbar { display: block; position: relative; width: 120px; height: 12px; margin-left: auto; }
+.dbar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+.dbar i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+td.big { font-size: 14.5px; font-weight: 600; }
+.heat td:not(:first-child) { min-width: 78px; }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-top: -12px; overflow-x: auto; }
+.tabs button { background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 10px 14px; font: 600 15px/1.2 var(--f-display); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pane { display: grid; gap: 40px; min-width: 0; }
+
+/* forecast */
+.fcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+.fc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.fc .v { font: 500 26px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.fc .d { font: 12.5px/1.3 var(--f-mono); color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.fc .foot { font-size: 12.5px; color: var(--muted); }
+.fc:first-child { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.pt { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.pthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.pt .v { font: 500 22px/1.1 var(--f-mono); margin-right: 10px; }
+.pt .d { font: 12.5px var(--f-mono); color: var(--muted); }
+.ptbar { position: relative; height: 18px; background: var(--sunk); border-radius: 9px; }
+.ptbar .rng { position: absolute; top: 5px; height: 8px; background: color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 4px; }
+.ptbar .tk { position: absolute; top: 1px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; }
+.tk.cons, .dot.cons { background: var(--accent); }
+.tk.px, .dot.px { background: var(--ink); }
+.ptlab { display: flex; justify-content: space-between; gap: 8px; font: 11.5px var(--f-mono); color: var(--muted); flex-wrap: wrap; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 4px 0 8px; }
+
+/* peers */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chipx { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 5px 4px 12px; font: 500 13px/1.4 var(--f-mono); }
+.chipx.main { background: var(--accent-soft); border-color: var(--accent); padding-right: 12px; }
+.chipx.err { border-color: var(--neg); color: var(--neg); }
+.chipx button { border: 0; background: var(--sunk); color: var(--ink); border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 14px; line-height: 1; }
+.chipx button:hover { background: var(--neg-soft); color: var(--neg); }
+.addpeer { position: relative; display: flex; gap: 6px; }
+.addpeer input { height: 34px; width: min(220px, 60vw); padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-family: var(--f-mono); text-transform: uppercase; }
+.addpeer input::placeholder { text-transform: none; font-family: var(--f-body); color: var(--muted); }
+.addpeer .sugg { top: 38px; min-width: 300px; }
+table.peers .cn { color: var(--muted); font-size: 12px; margin-left: 4px; }
+tr.gh th { background: var(--surface); text-align: center; border-bottom: 0; letter-spacing: .1em; text-transform: uppercase; font-size: 10.5px; }
+tr.gh th + th { border-left: 1px solid var(--line); }
+tr.me td, tr.me td:first-child { background: var(--accent-soft); font-weight: 600; }
+tr.med td { border-top: 2px solid var(--line); color: var(--muted); }
+tr.vs td { font-size: 12px; color: var(--muted); }
+td.better { background: color-mix(in srgb, var(--pos) 16%, transparent); }
+td.worse { background: color-mix(in srgb, var(--neg) 13%, transparent); }
+tr.me td.better { background: color-mix(in srgb, var(--pos) 26%, var(--accent-soft)); }
+tr.me td.worse { background: color-mix(in srgb, var(--neg) 22%, var(--accent-soft)); }
+.br.me .nm, .br.me .vals { font-weight: 700; color: var(--accent); }
+.peerctl { gap: 12px; }
+
+/* price reaction panel */
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+tr.clk { cursor: pointer; }
+tr.clk:hover td, tr.clk:focus-visible td { background: var(--sunk); }
+tr.clk:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
+.colhit, .mk { cursor: pointer; }
+.colhit:hover { fill: color-mix(in srgb, var(--accent) 8%, transparent); }
+.colhit:focus-visible, .mk:focus-visible { outline: 2px solid var(--accent); }
+.pxpanel { border-color: var(--accent); gap: 14px; scroll-margin-top: 96px; }
+.pxhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 10px 16px; }
+.pxt { margin: 4px 0 0; font: 600 18px/1.25 var(--f-display); }
+.pxt small { font: 400 13px var(--f-body); color: var(--muted); margin-left: 6px; }
+.pxbtns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pxstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+.pxstat { background: var(--sunk); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
+.pxstat .v { font: 500 22px/1.1 var(--f-mono); }
+.pxstat .foot { font: 11.5px/1.3 var(--f-mono); color: var(--muted); }
+.pxread { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12.5px/1.4 var(--f-mono); color: var(--muted); min-height: 18px; font-variant-numeric: tabular-nums; }
+.pxread b { color: var(--ink); font-weight: 600; }
+.pxchart svg { touch-action: pan-y; }
+.pxchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pxchip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px 5px 6px; font: 500 12.5px var(--f-mono); cursor: pointer; }
+.pxchip span { color: var(--muted); font-weight: 400; margin-left: 4px; }
+.pxchip.on { border-color: var(--accent); background: var(--accent-soft); }
+.pxchip:hover { border-color: var(--accent); }
+.pxchip .dot { margin: 0 2px 0 4px; }
+
+.skel { height: 120px; border-radius: 6px; background: linear-gradient(90deg, var(--sunk), var(--surface), var(--sunk)); background-size: 200% 100%; animation: sh 1.4s infinite linear; }
+@keyframes sh { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+footer { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brand"><i></i>Equity Monitor</div>
+    <form class="search" id="searchForm" autocomplete="off">
+      <input id="tickerInput" placeholder="Ticker or company name — e.g. MSFT, Nvidia" aria-label="Ticker or company name" spellcheck="false">
+      <button class="btn" type="submit">Analyse</button>
+      <button class="btn ghost" type="button" id="keyToggle" aria-expanded="false">API key</button>
+      <div class="sugg" id="sugg" hidden></div>
+    </form>
+    <div class="cmp"><span class="eyebrow">Compare</span>
+      <div class="seg" role="group" aria-label="Compare periods" id="cmpSeg">
+        <button type="button" data-c="qoq" aria-pressed="true" title="Quarter on quarter: vs the previous quarter">QoQ</button>
+        <button type="button" data-c="yoy" aria-pressed="false" title="Year on year: vs the same quarter last year">YoY</button>
+      </div>
+    </div>
+  </div>
+  <div class="wrap keyrow" id="keyRow" hidden>
+    <input id="keyInput" aria-label="Financial Modeling Prep API key" spellcheck="false">
+    <button class="btn ghost" type="button" id="keySave" style="height:34px">Save key</button>
+    <small>Financial Modeling Prep key, saved in this browser only.</small>
+  </div>
+</header>
+
+<div class="wrap">
+  <main id="app">
+    <div class="skel"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+/* ============ config ============ */
+const DEFAULT_KEY = "3URryNYomrF4STDsjWcuROvHcpZp4vEE";
+const BASE = "https://financialmodelingprep.com/stable/";
+const SHOW_Q = 8;          // quarters displayed
+const FETCH_Q = 13;        // fetched (extra for YoY on the oldest shown + TTM compare)
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const getKey = () => store.get("fmpKey") || DEFAULT_KEY;
+
+/* ============ formatting ============ */
+const isNum = v => typeof v === "number" && isFinite(v);
+function money(v, cur) {
+  if (!isNum(v)) return "—";
+  const s = v < 0 ? "−" : "", a = Math.abs(v);
+  const sym = (cur === "USD" || !cur) ? "$" : "";
+  const suf = (cur && cur !== "USD") ? " " + cur : "";
+  let out;
+  if (a >= 1e12) out = (a / 1e12).toFixed(2) + "T";
+  else if (a >= 1e9) out = (a / 1e9).toFixed(a >= 1e11 ? 1 : 2) + "B";
+  else if (a >= 1e6) out = (a / 1e6).toFixed(a >= 1e8 ? 0 : 1) + "M";
+  else if (a >= 1e3) out = (a / 1e3).toFixed(0) + "K";
+  else out = a.toFixed(2);
+  return s + sym + out + suf;
+}
+function pct(v, d = 1, sign = true) {
+  if (!isNum(v)) return "—";
+  const x = v * 100;
+  return (sign && x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d) + "%";
+}
+const pctPlain = (v, d = 1) => isNum(v) ? (v * 100).toFixed(d) + "%" : "—";
+function bps(v) { if (!isNum(v)) return "—"; const b = Math.round(v * 10000); return (b > 0 ? "+" : b < 0 ? "−" : "") + Math.abs(b) + " bps"; }
+function pp(v) { if (!isNum(v)) return "—"; const x = v * 100; return (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(1) + " pp"; }
+const cls = v => !isNum(v) ? "" : v > 0 ? "up" : v < 0 ? "dn" : "";
+const chip = (v, f = pct) => isNum(v) ? `<span class="chip ${cls(v)}">${f(v)}</span>` : `<span class="chip">—</span>`;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ============ maths ============ */
+function growth(a, b) { if (!isNum(a) || !isNum(b) || b === 0) return null; return (a - b) / Math.abs(b); }
+function ratio(a, b) { if (!isNum(a) || !isNum(b) || b === 0) return null; return a / b; }
+const sum = arr => arr.every(isNum) && arr.length ? arr.reduce((s, x) => s + x, 0) : null;
+const mean = arr => { const f = arr.filter(isNum); return f.length ? f.reduce((s, x) => s + x, 0) / f.length : null; };
+const qLabel = r => r.period === "FY" ? "FY" + String(r.fiscalYear).slice(-2) : `${r.period} FY${String(r.fiscalYear).slice(-2)}`;
+const n0 = v => isNum(v) ? v : 0;
+
+/* attach derived fields to each income-statement row (ascending order) */
+function enrichIncome(rows) {
+  rows.forEach((r, i) => {
+    r.label = qLabel(r);
+    r.gm = ratio(r.grossProfit, r.revenue);
+    r.om = ratio(r.operatingIncome, r.revenue);
+    r.nm = ratio(r.netIncome, r.revenue);
+    r.taxRate = ratio(r.incomeTaxExpense, r.incomeBeforeTax);
+    r.rdPct = ratio(r.researchAndDevelopmentExpenses, r.revenue);
+    r.sgaPct = ratio(r.sellingGeneralAndAdministrativeExpenses, r.revenue);
+    r.cogsPct = ratio(r.costOfRevenue, r.revenue);
+    r.opexPct = ratio(r.operatingExpenses, r.revenue);
+    const p = rows[i - 1], y = rows[i - 4];
+    r.revQoQ = p ? growth(r.revenue, p.revenue) : null;
+    r.revYoY = y ? growth(r.revenue, y.revenue) : null;
+  });
+  return rows;
+}
+
+/* index of the same quarter one year earlier, by fiscal year + period, falling back to i-4 */
+function yearAgoIdx(rows, i) {
+  const r = rows[i];
+  for (let j = i - 1; j >= 0; j--) if (rows[j].period === r.period && rows[j].fiscalYear === r.fiscalYear - 1) return j;
+  return i - 4 >= 0 ? i - 4 : -1;
+}
+
+/* segments: normalise FMP segmentation into ascending periods */
+function normSegments(raw, mode) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const rows = raw.filter(r => r && r.data && typeof r.data === "object")
+    .map(r => ({ date: r.date, fiscalYear: r.fiscalYear, period: r.period || "FY", data: r.data, label: qLabel({ period: r.period || "FY", fiscalYear: r.fiscalYear }) }))
+    .sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!rows.length) return null;
+  const keep = rows.slice(-(mode === "quarter" ? SHOW_Q + 4 : 6));
+  const latest = keep[keep.length - 1];
+  const names = new Set(); keep.slice(-(mode === "quarter" ? SHOW_Q : 5)).forEach(r => Object.keys(r.data).forEach(k => names.add(k)));
+  const ordered = [...names].sort((a, b) => n0(latest.data[b]) - n0(latest.data[a]));
+  return { mode, rows: keep, names: ordered };
+}
+
+const MODE = () => STATE.cmp || "qoq";
+/* which earlier row a segment period is compared with */
+function segCmpIdx(seg, i, mode) {
+  if (seg.mode !== "quarter") return i - 1;
+  return mode === "yoy" ? yearAgoIdx(seg.rows, i) : i - 1;
+}
+const segEffMode = (seg, mode) => seg.mode !== "quarter" ? "fy" : mode;
+const modeWord = m => m === "qoq" ? "QoQ" : m === "yoy" ? "YoY" : "vs prior year";
+
+function segmentAnalysis(seg, mode, idx) {
+  if (!seg || seg.rows.length < 2) return null;
+  const rows = seg.rows, L = isNum(idx) ? idx : rows.length - 1;
+  const j = segCmpIdx(seg, L, mode);
+  if (j < 0) return null;
+  const cur = rows[L], prev = rows[j], names = seg.names;
+  const totCur = names.reduce((t, n) => t + n0(cur.data[n]), 0);
+  const totPrev = names.reduce((t, n) => t + n0(prev.data[n]), 0);
+  const dTot = totCur - totPrev;
+  const items = names.map(n => {
+    const c = cur.data[n], p = prev.data[n];
+    const delta = (isNum(c) || isNum(p)) ? n0(c) - n0(p) : null;
+    return {
+      name: n, cur: c, prev: p, delta,
+      chg: growth(c, p), isNew: isNum(c) && !isNum(p),
+      contribPP: isNum(delta) && totPrev ? delta / totPrev : null,       // percentage points of total growth
+      shareOfGrowth: isNum(delta) && dTot ? delta / Math.abs(dTot) : null,
+      share: ratio(n0(c), totCur), sharePrev: ratio(n0(p), totPrev)
+    };
+  }).filter(it => isNum(it.cur) || isNum(it.prev));
+  items.forEach(it => it.shareChg = isNum(it.share) && isNum(it.sharePrev) ? it.share - it.sharePrev : null);
+  const eff = segEffMode(seg, mode);
+  return { cur, prev, idx: L, totCur, totPrev, dTot, totGrowth: growth(totCur, totPrev), items, eff, cmpLabel: modeWord(eff) };
+}
+
+/* ============ insights ============ */
+function buildInsights(d) {
+  const out = [];
+  const q = d.inc, n = q.length, L = q[n - 1], P = q[n - 2];
+  const yi = yearAgoIdx(q, n - 1), Y = yi >= 0 ? q[yi] : null;
+  const cur = d.currency;
+  const add = (tone, tag, title, body) => out.push({ tone, tag, title, body });
+
+  /* revenue */
+  const r0 = L.revYoY, r1 = P ? P.revYoY : null, qoq = L.revQoQ;
+  const seasonal = (yi >= 1) ? growth(q[yi].revenue, q[yi - 1].revenue) : null;
+  const accel = () => isNum(r1) ? (Math.abs(r0 - r1) < 0.01 ? `steady against ${pct(r1)} last quarter` : `<b>${r0 > r1 ? "accelerating" : "slowing"}</b> from ${pct(r1)} in ${P.label}`) : "";
+  if (MODE() === "qoq" && isNum(qoq)) {
+    let body = `${L.label} revenue was <b>${money(L.revenue, cur)}</b> against ${money(P.revenue, cur)} in ${P.label}, a change of ${money(L.revenue - P.revenue, cur)}.`;
+    if (isNum(seasonal)) body += Math.abs(qoq - seasonal) < 0.015 ? ` The same quarter last year moved ${pct(seasonal)}, so this is in line with normal seasonality.` :
+      ` The same quarter last year moved ${pct(seasonal)}, so this quarter was <b>${qoq > seasonal ? "stronger" : "weaker"}</b> than the usual seasonal pattern.`;
+    if (isNum(r0)) body += ` Year on year: ${pct(r0)}${accel() ? ", " + accel() : ""}.`;
+    add(qoq > 0 ? "pos" : isNum(seasonal) && qoq >= seasonal - 0.015 ? "neu" : "neg", "Top line · QoQ", `Revenue ${qoq >= 0 ? "up" : "down"} ${pct(qoq, 1, false).replace("−", "")} quarter on quarter`, body);
+  } else if (isNum(r0)) {
+    let body = `${L.label} revenue was <b>${money(L.revenue, cur)}</b> versus ${money(Y.revenue, cur)} a year earlier.`;
+    if (accel()) body += ` Growth is ${accel()}.`;
+    if (isNum(qoq)) body += ` Sequentially ${pct(qoq)} QoQ${isNum(seasonal) ? ` (same quarter last year: ${pct(seasonal)})` : ""}.`;
+    add(r0 > 0 ? "pos" : "neg", "Top line · YoY", `Revenue ${r0 >= 0 ? "up" : "down"} ${pct(r0, 1, false).replace("−", "")} year on year`, body);
+  }
+
+  forecastInsight(d.fc, cur, add);
+
+  /* margins */
+  if (Y && isNum(L.om) && isNum(Y.om)) {
+    const dOm = L.om - Y.om, dGm = isNum(L.gm) && isNum(Y.gm) ? L.gm - Y.gm : null;
+    let body = `Operating margin is <b>${pctPlain(L.om)}</b> (${bps(dOm)} YoY, ${bps(P && isNum(P.om) ? L.om - P.om : null)} QoQ).`;
+    if (isNum(dGm) && L.grossProfit) body += ` Gross margin ${dGm >= 0 ? "widened" : "narrowed"} ${bps(dGm).replace(/^[+−]/, "")} to ${pctPlain(L.gm)}, ${Math.abs(dGm) > Math.abs(dOm) * 0.6 ? "so pricing and product costs explain most of the move." : "so most of the change came below gross profit, in operating costs."}`;
+    const dRev = L.revenue - Y.revenue, dOI = L.operatingIncome - Y.operatingIncome;
+    if (dRev > 0 && isNum(dOI)) {
+      const inc = dOI / dRev;
+      body += ` Each extra dollar of revenue added <b>${inc.toFixed(2)}</b> dollars of operating profit${inc > L.om ? ", above the average margin, which is operating leverage." : "."}`;
+    }
+    add(dOm >= 0.0025 ? "pos" : dOm <= -0.0025 ? "neg" : "neu", "Profitability", `Margins ${dOm >= 0.0025 ? "expanding" : dOm <= -0.0025 ? "compressing" : "holding flat"}`, body);
+  }
+
+  /* cost discipline */
+  if (Y && isNum(L.operatingExpenses) && isNum(Y.operatingExpenses) && Y.operatingExpenses) {
+    const og = growth(L.operatingExpenses, Y.operatingExpenses), rg = r0;
+    const rd = growth(L.researchAndDevelopmentExpenses, Y.researchAndDevelopmentExpenses);
+    const sga = growth(L.sellingGeneralAndAdministrativeExpenses, Y.sellingGeneralAndAdministrativeExpenses);
+    let body = `Operating expenses grew <b>${pct(og)}</b> against revenue ${pct(rg)}.`;
+    if (isNum(rd) && L.researchAndDevelopmentExpenses) body += ` R&amp;D ${pct(rd)} (now ${pctPlain(L.rdPct)} of revenue)`;
+    if (isNum(sga) && L.sellingGeneralAndAdministrativeExpenses) body += `${isNum(rd) && L.researchAndDevelopmentExpenses ? "," : ""} SG&amp;A ${pct(sga)} (${pctPlain(L.sgaPct)} of revenue).`;
+    else body += ".";
+    if (isNum(og) && isNum(rg)) { const inLine = Math.abs(og - rg) < 0.01; add(inLine ? "neu" : og < rg ? "pos" : "neg", "Costs", inLine ? "Costs growing in line with sales" : og < rg ? "Costs growing slower than sales" : "Costs outpacing sales", body); }
+  }
+
+  /* earnings & share count */
+  if (Y) {
+    const eg = growth(L.epsDiluted, Y.epsDiluted), ng = growth(L.netIncome, Y.netIncome), sh = growth(L.weightedAverageShsOutDil, Y.weightedAverageShsOutDil);
+    if (isNum(eg) || isNum(ng)) {
+      let body = `Net income ${money(L.netIncome, cur)} (${pct(ng)} YoY), diluted EPS <b>${isNum(L.epsDiluted) ? L.epsDiluted.toFixed(2) : "—"}</b> (${pct(eg)}).`;
+      if (isNum(sh)) body += sh < -0.005 ? ` Share count fell ${pct(sh, 1, false).replace("−", "")}, so buybacks are adding to per-share growth.` : sh > 0.005 ? ` Diluted shares rose ${pct(sh)}, which dilutes per-share growth.` : " Share count was roughly flat.";
+      if (isNum(L.taxRate) && isNum(Y.taxRate) && Math.abs(L.taxRate - Y.taxRate) > 0.03) body += ` Note the tax rate moved from ${pctPlain(Y.taxRate)} to ${pctPlain(L.taxRate)}, which distorts the comparison.`;
+      add((isNum(eg) ? eg : ng) >= 0 ? "pos" : "neg", "Earnings", `EPS ${(isNum(eg) ? eg : ng) >= 0 ? "growing" : "declining"} ${pct(isNum(eg) ? eg : ng, 1, false).replace("−", "")} YoY`, body);
+    }
+  }
+
+  /* segments */
+  const segText = (sa, kind, seg) => {
+    if (!sa) return;
+    // seasonal reference for QoQ: same comparison one year earlier
+    let seasonal = null;
+    if (sa.eff === "qoq") {
+      const yi2 = yearAgoIdx(seg.rows, sa.idx);
+      if (yi2 >= 1) { const t = x => seg.names.reduce((s2, n) => s2 + n0(x.data[n]), 0); seasonal = growth(t(seg.rows[yi2]), t(seg.rows[yi2 - 1])); }
+    }
+    const big = sa.items.filter(i => isNum(i.share) && i.share >= 0.03);
+    const byDelta = [...sa.items].filter(i => isNum(i.delta)).sort((a, b) => b.delta - a.delta);
+    const top = sa.dTot >= 0 ? byDelta[0] : byDelta[byDelta.length - 1];
+    if (!top) return;
+    const fastest = big.filter(i => isNum(i.chg)).sort((a, b) => b.chg - a.chg)[0];
+    const decliners = big.filter(i => isNum(i.chg) && i.chg < 0);
+    const mix = big.filter(i => isNum(i.shareChg)).sort((a, b) => Math.abs(b.shareChg) - Math.abs(a.shareChg))[0];
+    const w = sa.cmpLabel;
+    let body = `Total ${kind === "segment" ? "segment" : "regional"} revenue <b>${pct(sa.totGrowth)} ${w}</b> (${sa.cur.label} vs ${sa.prev.label}). `;
+    if (sa.dTot > 0) body += `<b>${esc(top.name)}</b> ${top.isNew ? "is new and" : `grew ${pct(top.chg)} and`} added ${pp(top.contribPP)} of that, ${pctPlain(top.shareOfGrowth, 0)} of the ${money(sa.dTot, cur)} increase.`;
+    else body += `<b>${esc(top.name)}</b> was the biggest drag at ${pct(top.chg)} (${pp(top.contribPP)}).`;
+    if (fastest && fastest.name !== top.name) body += fastest.chg > 0 ? ` Fastest: ${esc(fastest.name)} ${pct(fastest.chg)}.` : ` Held up best: ${esc(fastest.name)} ${pct(fastest.chg)}.`;
+    const dl = decliners.filter(i => i.name !== top.name && !(fastest && i.name === fastest.name));
+    if (dl.length) body += ` Declining: ${dl.map(i => `${esc(i.name)} ${pct(i.chg)}`).join(", ")}.`;
+    if (mix && Math.abs(mix.shareChg) >= 0.005) body += ` Mix: ${esc(mix.name)} now ${pctPlain(mix.share)} of revenue (${pp(mix.shareChg)}).`;
+    const inSeason = isNum(seasonal) && Math.abs(sa.totGrowth - seasonal) < 0.015;
+    if (isNum(seasonal)) body += ` Same quarter last year the total moved ${pct(seasonal)}, so this is ${inSeason ? "in line with normal seasonality" : sa.totGrowth > seasonal ? "<b>stronger</b> than the usual seasonal pattern" : "<b>weaker</b> than the usual seasonal pattern"}.`;
+    add(sa.dTot > 0 ? "pos" : (sa.dTot < 0 && !inSeason) ? "neg" : "neu", `${kind === "segment" ? "Business units" : "Geography"} · ${w}`,
+      sa.dTot > 0 ? `${top.name} is the main growth driver` : `${top.name} is dragging ${kind === "segment" ? "segment" : "regional"} revenue down`, body);
+  };
+  segText(d.segL, "segment", d.seg);
+  segText(d.geoL, "region", d.geo);
+
+  /* cash flow */
+  const c = d.cf;
+  if (c.length >= 8) {
+    const t = c.slice(-4), tp = c.slice(-8, -4);
+    const fcf = sum(t.map(x => x.freeCashFlow)), fcfP = sum(tp.map(x => x.freeCashFlow));
+    const ni = sum(q.slice(-4).map(x => x.netIncome)), rev = sum(q.slice(-4).map(x => x.revenue));
+    const capex = sum(t.map(x => Math.abs(n0(x.capitalExpenditure)))), capexP = sum(tp.map(x => Math.abs(n0(x.capitalExpenditure))));
+    const revP = sum(q.slice(-8, -4).map(x => x.revenue));
+    if (isNum(fcf)) {
+      const conv = ratio(fcf, ni);
+      let body = `Trailing-12-month free cash flow <b>${money(fcf, cur)}</b> (${pct(growth(fcf, fcfP))} vs the prior 12 months), a ${pctPlain(ratio(fcf, rev))} FCF margin.`;
+      if (isNum(conv)) body += ` That is ${pctPlain(conv, 0)} of net income${conv < 0.8 ? ", so earnings are converting to cash less fully than usual." : "."}`;
+      const ci = ratio(capex, rev), ciP = ratio(capexP, revP);
+      if (isNum(ci) && isNum(ciP)) body += ` Capex runs at ${pctPlain(ci)} of revenue (${pp(ci - ciP)} YoY)${ci - ciP > 0.02 ? ", a step-up in investment." : "."}`;
+      const buy = sum(t.map(x => Math.abs(n0(x.commonStockRepurchased)))), div = sum(t.map(x => Math.abs(n0(x.commonDividendsPaid))));
+      if (buy > 0 || div > 0) body += ` Returned ${money(buy + div, cur)} via buybacks and dividends.`;
+      add(fcf > 0 && (!isNum(fcfP) || fcf >= fcfP) ? "pos" : fcf > 0 ? "neu" : "neg", "Cash generation", fcf > 0 ? (isNum(fcfP) && fcf < fcfP ? "Cash generation softer than last year" : "Strong cash generation") : "Burning cash", body);
+    }
+  }
+
+  /* balance sheet */
+  const b = d.bs;
+  if (b.length >= 2) {
+    const bL = b[b.length - 1], byi = b.length - 5 >= 0 ? b.length - 5 : 0, bY = b[byi];
+    const nd = bL.netDebt, ndY = bY.netDebt;
+    let body = isNum(nd) ? (nd < 0 ? `Net cash of <b>${money(-nd, cur)}</b>` : `Net debt of <b>${money(nd, cur)}</b>`) + ` (was ${isNum(ndY) ? (ndY < 0 ? "net cash " + money(-ndY, cur) : "net debt " + money(ndY, cur)) : "—"} a year ago).` : "";
+    const cr = ratio(bL.totalCurrentAssets, bL.totalCurrentLiabilities);
+    if (isNum(cr)) body += ` Current ratio ${cr.toFixed(2)}.`;
+    const tone = isNum(nd) && isNum(ndY) ? (nd <= ndY ? "pos" : "neu") : "neu";
+    const invG = growth(bL.inventory, bY.inventory), arG = growth(bL.netReceivables, bY.netReceivables), drG = growth(bL.deferredRevenue, bY.deferredRevenue);
+    const flags = [];
+    if (isNum(invG) && isNum(r0) && bL.inventory > 0.02 * bL.totalAssets && invG - r0 > 0.1) flags.push(`inventory up ${pct(invG)} vs sales ${pct(r0)}, worth watching for demand softness`);
+    if (isNum(arG) && isNum(r0) && arG - r0 > 0.12) flags.push(`receivables up ${pct(arG)}, faster than sales`);
+    if (isNum(drG) && isNum(r0) && bL.deferredRevenue > 0.02 * bL.totalAssets && drG > r0 + 0.03) flags.push(`deferred revenue up ${pct(drG)}, a sign of future revenue already booked`);
+    if (flags.length) body += " Watch: " + flags.join("; ") + ".";
+    add(flags.some(f => f.includes("watching") || f.includes("faster than")) ? "neg" : tone, "Balance sheet", isNum(nd) ? (nd < 0 ? "Net cash position" : (isNum(ndY) && nd < ndY ? "Deleveraging" : "Carrying net debt")) : "Balance sheet", body);
+  }
+
+  /* headline */
+  let verdict = "";
+  if (isNum(r0)) {
+    const segLead = d.segL && d.segL.dTot > 0 ? [...d.segL.items].filter(i => isNum(i.delta)).sort((a, b) => b.delta - a.delta)[0] : null;
+    const nm = d.profile.companyName || d.symbol;
+    if (MODE() === "qoq" && isNum(qoq)) verdict = `${nm} revenue moved ${pct(qoq)} QoQ in ${L.label} (${pct(r0)} YoY)`;
+    else { verdict = `${nm} grew revenue ${pct(r0)} YoY in ${L.label}`; if (isNum(r1)) verdict += ` (${r0 > r1 + 0.01 ? "accelerating" : r0 < r1 - 0.01 ? "decelerating" : "steady"})`; }
+    if (segLead) verdict += `. ${segLead.name} added the most revenue ${d.segL.cmpLabel === "vs prior year" ? "over the last fiscal year" : d.segL.cmpLabel}`;
+    if (Y && isNum(L.om) && isNum(Y.om)) verdict += `${segLead ? ". Operating margin is" : ", with operating margin"} ${L.om - Y.om >= 0.0025 ? "expanding" : L.om - Y.om <= -0.0025 ? "contracting" : "flat"} at ${pctPlain(L.om)}`;
+    const eg = Y ? growth(L.epsDiluted, Y.epsDiluted) : null;
+    if (isNum(eg)) verdict += ` and EPS ${pct(eg)}`;
+    verdict += ".";
+  }
+  return { verdict, list: out };
+}
+
+/* ============ SVG charts ============ */
+function niceTicks(min, max, count = 4) {
+  if (min === max) { max = min + 1; }
+  const span = max - min, step0 = span / count, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step0) || mag * 10;
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const t = []; for (let v = lo; v <= hi + step / 2; v += step) t.push(+v.toFixed(10));
+  return t;
+}
+const W = 640, H = 260, M = { t: 18, r: 12, b: 28, l: 56 };
+
+function barChart(labels, series, opts = {}) {
+  // series: [{name,color,values}] grouped or stacked
+  const stacked = !!opts.stacked, fmt = opts.fmt || (v => money(v));
+  const all = [];
+  labels.forEach((_, i) => {
+    if (stacked) { let p = 0, ng = 0; series.forEach(s => { const v = n0(s.values[i]); if (v >= 0) p += v; else ng += v; }); all.push(p, ng); }
+    else series.forEach(s => all.push(n0(s.values[i])));
+    if (opts.marks && isNum(opts.marks[i])) all.push(opts.marks[i]);
+    if (opts.marks2 && isNum(opts.marks2[i])) all.push(opts.marks2[i]);
+  });
+  const ticks = niceTicks(Math.min(0, ...all), Math.max(0, ...all));
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const mt = M.t + (opts.topPad || 0);
+  const iw = W - M.l - M.r, ih = H - mt - M.b;
+  const Y = v => mt + ih - (v - y0) / (y1 - y0) * ih;
+  const bw = iw / labels.length, gap = Math.min(14, bw * 0.25);
+  let g = ticks.map(t => `<line class="gl" x1="${M.l}" x2="${W - M.r}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${M.l - 8}" y="${Y(t) + 3.5}" text-anchor="end">${fmt(t)}</text>`).join("");
+  labels.forEach((lab, i) => {
+    const x = M.l + i * bw + gap / 2, w = bw - gap;
+    if (stacked) {
+      let pos = 0, neg = 0;
+      series.forEach(s => {
+        const v = n0(s.values[i]); if (!v) return;
+        const a = v >= 0 ? pos : neg, b = a + v;
+        if (v >= 0) pos = b; else neg = b;
+        g += `<rect x="${x}" width="${w}" y="${Math.min(Y(a), Y(b))}" height="${Math.max(0.5, Math.abs(Y(a) - Y(b)))}" fill="${s.color}"><title>${esc(s.name)} · ${esc(lab)}: ${fmt(v)}</title></rect>`;
+      });
+    } else {
+      const sw = w / series.length;
+      series.forEach((s, k) => {
+        const v = s.values[i]; if (!isNum(v)) return;
+        const last = (opts.dashedLast && i === labels.length - 1) || (isNum(opts.estFrom) && i >= opts.estFrom);
+        g += `<rect x="${x + k * sw}" width="${Math.max(1, sw - (series.length > 1 ? 2 : 0))}" y="${Math.min(Y(0), Y(v))}" height="${Math.max(0.5, Math.abs(Y(v) - Y(0)))}" fill="${(opts.fills && opts.fills[i]) || s.color}" rx="1.5" ${last ? `stroke="${s.color}" stroke-width="1.5" stroke-dasharray="4 3"` : ""}><title>${esc(s.name)} · ${esc(lab)}: ${fmt(v)}</title></rect>`;
+      });
+      if (opts.marks && isNum(opts.marks[i])) g += `<line x1="${x - 4}" x2="${x + w + 4}" y1="${Y(opts.marks[i])}" y2="${Y(opts.marks[i])}" stroke="var(--ink)" stroke-width="2.2" stroke-dasharray="5 3"><title>${esc(opts.markName || "Estimate")} · ${esc(lab)}: ${fmt(opts.marks[i])}</title></line>`;
+      if (opts.marks2 && isNum(opts.marks2[i])) g += `<line x1="${x - 4}" x2="${x + w + 4}" y1="${Y(opts.marks2[i])}" y2="${Y(opts.marks2[i])}" stroke="var(--c2)" stroke-width="2.6" stroke-dasharray="2 3"><title>${esc(opts.mark2Name || "Model")} · ${esc(lab)}: ${fmt(opts.marks2[i])}</title></line>`;
+    }
+    const hasTxt = opts.annotText && opts.annotText[i];
+    if (hasTxt || (opts.annot && isNum(opts.annot[i]))) {
+      const top = stacked ? Y(series.reduce((t, s) => t + Math.max(0, n0(s.values[i])), 0)) : Y(Math.max(...series.map(s => n0(s.values[i])), opts.marks && isNum(opts.marks[i]) ? opts.marks[i] : -Infinity, opts.marks2 && isNum(opts.marks2[i]) ? opts.marks2[i] : -Infinity));
+      if (hasTxt) {
+        const lines = [].concat(opts.annotText[i]);
+        lines.forEach((ln, k) => { g += `<text x="${x + w / 2}" y="${top - 6 - (lines.length - 1 - k) * 12}" text-anchor="middle" style="fill:var(${ln.tone === "pos" ? "--pos" : ln.tone === "neg" ? "--neg" : "--muted"});font-weight:${ln.bold ? 600 : 500};font-size:9.8px">${esc(ln.t)}</text>`; });
+      } else g += `<text x="${x + w / 2}" y="${top - 5}" text-anchor="middle" style="fill:var(${opts.annot[i] >= 0 ? "--pos" : "--neg"});font-weight:500">${pct(opts.annot[i], 0)}</text>`;
+    }
+    g += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${esc(lab)}</text>`;
+    if (opts.clickKeys && opts.clickKeys[i]) g += `<rect class="colhit" data-evt="${esc(opts.clickKeys[i])}" x="${x - gap / 2}" y="${M.t}" width="${bw}" height="${H - M.t - M.b + 18}" fill="transparent" role="button" tabindex="0" aria-label="Show how the stock traded around the ${esc(lab)} report"><title>${esc(lab)}: click to see the price ±30 days around the report</title></rect>`;
+  });
+  if (y0 < 0) g += `<line class="zero" x1="${M.l}" x2="${W - M.r}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.title || "bar chart")}">${g}</svg>`;
+}
+
+function lineChart(labels, series, opts = {}) {
+  const fmt = opts.fmt || (v => pctPlain(v, 0));
+  const vals = series.flatMap(s => s.values.filter(isNum));
+  if (!vals.length) return `<p class="note">No data.</p>`;
+  let mn = Math.min(...vals), mx = Math.max(...vals);
+  if (opts.zero) mn = Math.min(0, mn);
+  const pad = (mx - mn) * 0.1 || 0.01;
+  const ticks = niceTicks(mn - (opts.zero ? 0 : pad), mx + pad);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const iw = W - M.l - M.r, ih = H - M.t - M.b;
+  const Y = v => M.t + ih - (v - y0) / (y1 - y0) * ih;
+  const X = i => M.l + (labels.length === 1 ? iw / 2 : i * iw / (labels.length - 1));
+  let g = ticks.map(t => `<line class="gl" x1="${M.l}" x2="${W - M.r}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${M.l - 8}" y="${Y(t) + 3.5}" text-anchor="end">${fmt(t)}</text>`).join("");
+  if (y0 < 0 && y1 > 0) g += `<line class="zero" x1="${M.l}" x2="${W - M.r}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+  labels.forEach((l, i) => g += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">${esc(l)}</text>`);
+  series.forEach(s => {
+    let d = "", started = false;
+    s.values.forEach((v, i) => { if (!isNum(v)) { started = false; return; } d += (started ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); started = true; });
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.2" stroke-linejoin="round" ${s.dash ? 'stroke-dasharray="5 4"' : ""}/>`;
+    s.values.forEach((v, i) => { if (isNum(v)) g += `<circle cx="${X(i)}" cy="${Y(v)}" r="${i === s.values.length - 1 ? 4 : 2.6}" fill="${s.color}" stroke="var(--surface)" stroke-width="1.5"><title>${esc(s.name)} · ${esc(labels[i])}: ${fmt(v)}</title></circle>`; });
+    const li = s.values.length - 1; if (isNum(s.values[li])) g += `<text x="${X(li) - 6}" y="${Y(s.values[li]) - 9}" text-anchor="end" style="fill:${s.color};font-weight:500">${fmt(s.values[li])}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.title || "line chart")}">${g}</svg>`;
+}
+const legend = series => `<div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>`;
+const PAL = ["var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)", "var(--c6)", "var(--c7)", "var(--c8)"];
+
+/* ============ data ============ */
+class ApiError extends Error { constructor(m, s) { super(m); this.status = s; } }
+const API_CACHE = new Map();
+function api(path, params = {}) {
+  const key = path + "?" + new URLSearchParams(params).toString() + "#" + getKey();
+  if (!/^search/.test(path) && API_CACHE.has(key)) return API_CACHE.get(key);
+  const pr = apiFetch(path, params);
+  if (!/^search/.test(path)) { API_CACHE.set(key, pr); pr.catch(() => API_CACHE.delete(key)); }
+  return pr;
+}
+async function apiFetch(path, params) {
+  const u = new URL(BASE + path);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+  u.searchParams.set("apikey", getKey());
+  let r;
+  try { r = await fetch(u); } catch (e) { throw new ApiError("Couldn't reach Financial Modeling Prep. Check your internet connection.", 0); }
+  const text = await r.text();
+  let j; try { j = JSON.parse(text); } catch (e) { throw new ApiError(text.slice(0, 220) || `HTTP ${r.status}`, r.status); }
+  if (!r.ok || (j && !Array.isArray(j) && (j["Error Message"] || j.error || j.message))) throw new ApiError(j["Error Message"] || j.error || j.message || `HTTP ${r.status}`, r.status);
+  return j;
+}
+
+async function loadSegments(endpoint, symbol) {
+  let qNote = "";
+  try { const q = await api(endpoint, { symbol, period: "quarter" }); const s = normSegments(q, "quarter"); if (s && s.rows.length >= 2) return s; qNote = "No quarterly segment figures were returned for this company."; }
+  catch (e) { qNote = e.message; }
+  try { const a = await api(endpoint, { symbol }); const s = normSegments(a, "annual"); if (s) s.qNote = qNote; return s; } catch (e) { return null; }
+}
+
+async function load(symbol) {
+  symbol = symbol.trim().toUpperCase();
+  if (!symbol) return;
+  store.set("lastTicker", symbol);
+  document.getElementById("tickerInput").value = symbol;
+  const app = document.getElementById("app");
+  app.innerHTML = `<div class="status">Loading ${esc(symbol)}…</div><div class="skel"></div><div class="skel"></div>`;
+  try {
+    const [profile, inc, bs, cf] = await Promise.all([
+      api("profile", { symbol }).then(x => x[0] || {}).catch(() => ({})),
+      api("income-statement", { symbol, period: "quarter", limit: FETCH_Q }),
+      api("balance-sheet-statement", { symbol, period: "quarter", limit: FETCH_Q }),
+      api("cash-flow-statement", { symbol, period: "quarter", limit: FETCH_Q })
+    ]);
+    if (!inc.length) throw new ApiError(`No financial statements found for ${symbol}. Check the ticker, or use the search to pick the listing.`, 404);
+    const [seg, geo, earnings, est, pt] = await Promise.all([
+      loadSegments("revenue-product-segmentation", symbol), loadSegments("revenue-geographic-segmentation", symbol),
+      api("earnings", { symbol, limit: 12 }).catch(() => []),
+      api("analyst-estimates", { symbol, period: "annual", limit: 10 }).catch(() => []),
+      api("price-target-consensus", { symbol }).then(x => x[0] || null).catch(() => null)
+    ]);
+    const asc = a => [...a].sort((x, y) => x.date < y.date ? -1 : 1);
+    const d = { symbol, profile, inc: enrichIncome(asc(inc)), bs: asc(bs), cf: asc(cf), seg, geo, earnings, est, pt };
+    d.bs.forEach(r => r.label = qLabel(r)); d.cf.forEach(r => r.label = qLabel(r));
+    d.currency = d.inc[d.inc.length - 1].reportedCurrency || profile.currency || "USD";
+    STATE.segSel = {}; STATE.px = null;
+    d.fc = buildForecast(d);
+    render(d);
+  } catch (e) {
+    const keyHint = (e.status === 401 || e.status === 403 || /api key|apikey|Invalid/i.test(e.message)) ? " Check your API key under “API key”." : (e.status === 402 || /premium|subscription|plan/i.test(e.message)) ? " This data needs a higher Financial Modeling Prep plan." : "";
+    app.innerHTML = `<div class="status err"><b>Couldn't load ${esc(symbol)}.</b> ${esc(e.message)}${keyHint}</div>`;
+  }
+}
+
+/* ============ render ============ */
+let STATE = { incMode: "values", cmp: "qoq", segSel: {}, tab: "co", peerSeq: 0, peers: null, peerFor: null, px: null, pxSeq: 0 };
+function render(d) {
+  STATE.d = d;
+  d.segL = segmentAnalysis(d.seg, MODE()); d.geoL = segmentAnalysis(d.geo, MODE());
+  d.ins = buildInsights(d);
+  const mode = MODE();
+  const cur = d.currency, p = d.profile;
+  const q = d.inc.slice(-SHOW_Q), all = d.inc, L = all[all.length - 1];
+  const yi = yearAgoIdx(all, all.length - 1), Y = yi >= 0 ? all[yi] : null, P = all[all.length - 2];
+  const cfL = d.cf.slice(-4), ttmFcf = cfL.length === 4 ? sum(cfL.map(x => x.freeCashFlow)) : null;
+  const ttmRev = sum(all.slice(-4).map(x => x.revenue));
+  const app = document.getElementById("app");
+
+  const kpi = (lab, v, yoy, qoq, fmtD = pct) => `<div class="kpi"><span class="eyebrow">${lab}</span><span class="v">${v}</span><span class="d">${yoy !== undefined ? `<span>YoY ${chip(yoy, fmtD)}</span>` : ""}${qoq !== undefined ? `<span>QoQ ${chip(qoq, fmtD)}</span>` : ""}</span></div>`;
+  const dm = (a, b) => isNum(a) && isNum(b) ? a - b : null;
+
+  app.innerHTML = `
+  <section class="co">
+    <div>
+      <div class="tick"><b>${esc(d.symbol)}</b>${p.exchange ? `<span>${esc(p.exchange)}</span>` : ""}${p.sector ? `<span>${esc(p.sector)} · ${esc(p.industry || "")}</span>` : ""}</div>
+      <h1>${esc(p.companyName || d.symbol)}</h1>
+    </div>
+    <div class="price">
+      ${isNum(p.price) ? `<div class="p">${p.price.toFixed(2)} <span style="font-size:13px" class="${cls(p.changePercentage)}">${pct(isNum(p.changePercentage) ? p.changePercentage / 100 : null, 2)}</span></div>` : ""}
+      <div class="m">Mkt cap ${money(p.marketCap, p.currency)} · latest quarter ${esc(L.label)} (ended ${esc(L.date)})</div>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Views">
+    <button type="button" role="tab" data-tab="co" aria-selected="${STATE.tab !== "peers"}">Company</button>
+    <button type="button" role="tab" data-tab="peers" aria-selected="${STATE.tab === "peers"}">Peers &amp; valuation</button>
+  </div>
+  <div class="pane" id="pane-co" ${STATE.tab === "peers" ? "hidden" : ""}>
+  <section class="sec" id="insights">
+    <div class="sec-h"><div><span class="eyebrow">Where the company is growing</span><h2>Key drivers right now</h2></div></div>
+    ${d.ins.verdict ? `<p class="verdict">${esc(d.ins.verdict)}</p>` : ""}
+    <div class="insights">${d.ins.list.map(i => `<article class="ins ${i.tone}"><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><p>${i.body}</p></article>`).join("")}</div>
+  </section>
+
+  <section class="kpis" aria-label="Latest quarter">
+    ${kpi("Revenue " + esc(L.label), money(L.revenue, cur), L.revYoY, L.revQoQ)}
+    ${kpi("Gross margin", pctPlain(L.gm), dm(L.gm, Y && Y.gm), dm(L.gm, P && P.gm), bps)}
+    ${kpi("Operating margin", pctPlain(L.om), dm(L.om, Y && Y.om), dm(L.om, P && P.om), bps)}
+    ${kpi("Net margin", pctPlain(L.nm), dm(L.nm, Y && Y.nm), dm(L.nm, P && P.nm), bps)}
+    ${kpi("Diluted EPS", isNum(L.epsDiluted) ? L.epsDiluted.toFixed(2) : "—", Y ? growth(L.epsDiluted, Y.epsDiluted) : null, P ? growth(L.epsDiluted, P.epsDiluted) : null)}
+    ${kpi("FCF (TTM)", money(ttmFcf, cur), undefined, undefined)}
+  </section>
+
+  ${forecastSection(d)}
+
+  <section class="sec" id="growth">
+    <div class="sec-h"><div><span class="eyebrow">Income statement</span><h2>Revenue growth</h2><p>Quarterly revenue with ${mode === "qoq" ? "quarter-on-quarter" : "year-on-year"} growth above each bar. Use the Compare switch at the top to change this.</p></div></div>
+    <div class="grid2">
+      <div class="panel"><h4>Revenue by quarter <small>${mode === "qoq" ? "QoQ" : "YoY"} % above bars</small></h4><div class="chart">${barChart(q.map(r => r.label), [{ name: "Revenue", color: "var(--accent)", values: q.map(r => r.revenue) }], { annot: q.map(r => mode === "qoq" ? r.revQoQ : r.revYoY), fmt: v => money(v, cur), title: "Quarterly revenue" })}</div></div>
+      <div class="panel"><h4>Growth rates</h4>${legend([{ name: "YoY", color: "var(--c1)" }, { name: "QoQ", color: "var(--c2)" }])}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "YoY", color: "var(--c1)", values: q.map(r => r.revYoY) }, { name: "QoQ", color: "var(--c2)", values: q.map(r => r.revQoQ), dash: true }], { title: "Revenue growth" })}</div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="statement">
+    <div class="sec-h"><div><span class="eyebrow">Income statement</span><h2>Quarterly breakdown</h2><p>Switch views to see each line as a value, its growth, or as a share of revenue.</p></div>
+      <div class="seg" role="group" aria-label="Table view" id="incSeg">
+        ${[["values", "Values"], ["yoy", "YoY %"], ["qoq", "QoQ %"], ["pct", "% of revenue"]].map(([k, l]) => `<button type="button" data-m="${k}" aria-pressed="${STATE.incMode === k}">${l}</button>`).join("")}
+      </div>
+    </div>
+    <div class="tbl" id="incTable"></div>
+  </section>
+
+  <section class="sec" id="margins">
+    <div class="sec-h"><div><span class="eyebrow">Profitability</span><h2>Margins and cost structure</h2><p>How much of each revenue dollar is kept at each level, and where the costs go.</p></div></div>
+    <div class="grid2">
+      <div class="panel"><h4>Margins</h4>${legend([{ name: "Gross", color: "var(--c1)" }, { name: "Operating", color: "var(--c3)" }, { name: "Net", color: "var(--c2)" }])}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "Gross", color: "var(--c1)", values: q.map(r => r.grossProfit ? r.gm : null) }, { name: "Operating", color: "var(--c3)", values: q.map(r => r.om) }, { name: "Net", color: "var(--c2)", values: q.map(r => r.nm) }], { title: "Margins" })}</div></div>
+      <div class="panel"><h4>Costs as % of revenue</h4>${legend([{ name: "Cost of revenue", color: "var(--c8)" }, { name: "R&D", color: "var(--c4)" }, { name: "SG&A", color: "var(--c7)" }])}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "Cost of revenue", color: "var(--c8)", values: q.map(r => r.costOfRevenue ? r.cogsPct : null) }, { name: "R&D", color: "var(--c4)", values: q.map(r => r.researchAndDevelopmentExpenses ? r.rdPct : null) }, { name: "SG&A", color: "var(--c7)", values: q.map(r => r.sellingGeneralAndAdministrativeExpenses ? r.sgaPct : null) }], { title: "Cost structure", zero: true })}</div></div>
+    </div>
+  </section>
+
+  ${growthSection(d)}
+
+  <section class="sec" id="balance">
+    <div class="sec-h"><div><span class="eyebrow">Balance sheet · ${esc(d.bs.length ? d.bs[d.bs.length - 1].label : "")}</span><h2>Balance sheet</h2><p>What the company owns against how it is funded, with changes over the last quarter and year.</p></div></div>
+    ${bsSection(d, cur)}
+  </section>
+
+  <section class="sec" id="cash">
+    <div class="sec-h"><div><span class="eyebrow">Cash flow</span><h2>Cash generation and returns</h2></div></div>
+    ${cfSection(d, cur)}
+  </section>
+  </div>
+  <div class="pane" id="pane-peers" ${STATE.tab === "peers" ? "" : "hidden"}></div>
+
+  <footer>Data: Financial Modeling Prep, as reported in company filings. Figures in ${esc(cur)}. Growth compares with the same fiscal quarter a year earlier (YoY) and the previous quarter (QoQ). Estimates are analyst consensus via Financial Modeling Prep; the model forecast is a simple statistical baseline. Insights are generated from the numbers by fixed rules, so read them alongside the filings.</footer>
+  `;
+  renderIncTable();
+  document.querySelectorAll("#incSeg button").forEach(b => b.addEventListener("click", () => {
+    STATE.incMode = b.dataset.m; store.set("incMode", STATE.incMode);
+    document.querySelectorAll("#incSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    renderIncTable();
+  }));
+  document.querySelectorAll(".tabs [data-tab]").forEach(b => b.addEventListener("click", () => {
+    STATE.tab = b.dataset.tab; store.set("tab", STATE.tab);
+    document.querySelectorAll(".tabs [data-tab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    document.getElementById("pane-co").hidden = STATE.tab === "peers";
+    document.getElementById("pane-peers").hidden = STATE.tab !== "peers";
+    if (STATE.tab === "peers") renderPeers();
+  }));
+  if (STATE.tab === "peers") renderPeers();
+  if (STATE.px && STATE.px.open) renderPx(false);
+}
+
+function renderIncTable() {
+  const d = STATE.d, all = d.inc, start = Math.max(0, all.length - SHOW_Q), cur = d.currency, mode = STATE.incMode;
+  const cols = all.slice(start).map((r, k) => ({ r, i: start + k }));
+  const rows = [
+    ["Revenue", "revenue", "strong"], ["Cost of revenue", "costOfRevenue", "sub"], ["Gross profit", "grossProfit", "strong"],
+    ["R&D", "researchAndDevelopmentExpenses", "sub"], ["SG&A", "sellingGeneralAndAdministrativeExpenses", "sub"], ["Total operating expenses", "operatingExpenses", ""],
+    ["Operating income", "operatingIncome", "strong"], ["EBITDA", "ebitda", ""], ["Interest expense", "interestExpense", "sub"],
+    ["Pre-tax income", "incomeBeforeTax", ""], ["Income tax", "incomeTaxExpense", "sub"], ["Net income", "netIncome", "strong"],
+    ["Diluted EPS", "epsDiluted", "", "eps"], ["Diluted shares", "weightedAverageShsOutDil", "", "shares"]
+  ];
+  const marginRows = [["Gross margin", "gm"], ["Operating margin", "om"], ["Net margin", "nm"], ["Effective tax rate", "taxRate"]];
+  const cell = (v, html) => `<td class="${!isNum(v) ? "na" : ""}">${html}</td>`;
+  let h = `<table><thead><tr><th>${esc(cur)}</th>${cols.map(c => `<th>${esc(c.r.label)}<br><span style="font-weight:400">${esc(c.r.date)}</span></th>`).join("")}</tr></thead><tbody>`;
+  rows.forEach(([name, f, k, kind]) => {
+    if (cols.every(c => !c.r[f])) return;
+    h += `<tr class="${k}"><td>${name}</td>`;
+    cols.forEach(({ r, i }) => {
+      const v = r[f];
+      if (mode === "values") h += cell(v, kind === "eps" ? (isNum(v) ? v.toFixed(2) : "—") : kind === "shares" ? (isNum(v) ? (v / 1e6).toFixed(0) + "M" : "—") : money(v, cur));
+      else if (mode === "pct") { const x = kind ? null : ratio(v, r.revenue); h += cell(x, pctPlain(x)); }
+      else {
+        const j = mode === "yoy" ? yearAgoIdx(all, i) : i - 1;
+        const x = j >= 0 ? growth(v, all[j][f]) : null;
+        h += `<td class="${isNum(x) ? cls(x) : "na"}">${pct(x)}</td>`;
+      }
+    });
+    h += `</tr>`;
+  });
+  h += `<tr class="grp"><td colspan="${cols.length + 1}">${mode === "values" || mode === "pct" ? "Margins" : "Margin change (" + (mode === "yoy" ? "YoY" : "QoQ") + ")"}</td></tr>`;
+  marginRows.forEach(([name, f]) => {
+    h += `<tr><td>${name}</td>`;
+    cols.forEach(({ r, i }) => {
+      if (mode === "values" || mode === "pct") h += cell(r[f], pctPlain(r[f]));
+      else { const j = mode === "yoy" ? yearAgoIdx(all, i) : i - 1; const x = j >= 0 && isNum(r[f]) && isNum(all[j][f]) ? r[f] - all[j][f] : null; h += `<td class="${isNum(x) ? (f === "taxRate" ? "" : cls(x)) : "na"}">${bps(x)}</td>`; }
+    });
+    h += `</tr>`;
+  });
+  h += `</tbody></table>`;
+  document.getElementById("incTable").innerHTML = h;
+}
+
+function growthSection(d) {
+  const mode = MODE(), cur = d.currency;
+  const anyAnnual = [d.seg, d.geo].some(x => x && x.mode !== "quarter");
+  const anyQuarter = [d.seg, d.geo].some(x => x && x.mode === "quarter");
+  const note = (d.seg && d.seg.qNote) || (d.geo && d.geo.qNote) || "";
+  let banner = "";
+  const which = d.seg && d.seg.mode !== "quarter" ? (d.geo && d.geo.mode !== "quarter" ? "by segment and region" : "by segment") : "by region";
+  if (anyAnnual && mode === "qoq") banner = `<div class="banner"><b>QoQ ${which} isn't available for this ticker on your data plan.</b> Financial Modeling Prep only returned annual segment figures${note ? ` (it said: “${esc(note.slice(0, 160))}”)` : ""}, so ${anyQuarter ? "that part compares" : "this section compares"} each fiscal year with the one before. Company-level revenue above is still quarterly. If quarterly segment data comes back, QoQ shows here automatically.</div>`;
+  else if (anyAnnual) banner = `<div class="banner"><b>Annual figures ${which}.</b> Each fiscal year is compared with the one before, since quarterly ${which.replace("by ", "")} data isn't available on your plan.</div>`;
+  return `<section class="sec" id="seggrowth">
+    <div class="sec-h"><div><span class="eyebrow">Revenue growth by product and segment</span><h2>Where the growth came from</h2>
+      <p>How much each business unit and region added to or took away from revenue, its % change, and how many percentage points of total growth it accounts for.</p></div></div>
+    ${banner}
+    ${growthBlock(d.seg, "seg", "By business unit", cur)}
+    ${growthBlock(d.geo, "geo", "By region", cur)}
+  </section>`;
+}
+
+function growthBlock(seg, id, title, cur) {
+  if (!seg) return `<div class="gblock"><div class="ghead"><h3>${esc(title)}</h3></div><p class="status">No ${id === "geo" ? "regional" : "segment"} breakdown is available for this company from Financial Modeling Prep.</p></div>`;
+  const mode = MODE();
+  // periods that have a comparison available
+  const valid = seg.rows.map((r, i) => i).filter(i => segCmpIdx(seg, i, mode) >= 0);
+  if (!valid.length) return "";
+  let sel = STATE.segSel[id];
+  if (!valid.includes(sel)) sel = valid[valid.length - 1];
+  const sa = segmentAnalysis(seg, mode, sel);
+  if (!sa) return "";
+  const colors = {}; seg.names.forEach((n, i) => colors[n] = PAL[i % PAL.length]);
+  const w = sa.cmpLabel;
+
+  /* headline */
+  const head = `<div class="gsum"><span class="big ${cls(sa.totGrowth)}">${pct(sa.totGrowth)}</span>
+    <span class="cap">Total ${id === "geo" ? "regional" : "segment"} revenue ${w}: <b>${money(sa.totPrev, cur)}</b> in ${esc(sa.prev.label)} → <b>${money(sa.totCur, cur)}</b> in ${esc(sa.cur.label)}, a change of <b class="${cls(sa.dTot)}">${money(sa.dTot, cur).replace(/^(?!−)/, sa.dTot > 0 ? "+" : "")}</b>.</span></div>`;
+
+  /* growth bridge */
+  let steps = sa.items.filter(i => isNum(i.delta)).sort((a, b) => b.delta - a.delta);
+  if (steps.length > 9) {
+    const keep = [...steps].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 8).map(i => i.name);
+    const rest = steps.filter(i => !keep.includes(i.name));
+    const rd = rest.reduce((t, i) => t + i.delta, 0), rp = rest.reduce((t, i) => t + n0(i.prev), 0);
+    steps = steps.filter(i => keep.includes(i.name)).concat([{ name: `Other (${rest.length})`, delta: rd, chg: growth(rp + rd, rp), contribPP: sa.totPrev ? rd / sa.totPrev : null, other: true }]).sort((a, b) => b.delta - a.delta);
+  }
+  let cum = sa.totPrev;
+  steps = steps.map(s => { const a = cum; cum += s.delta; return Object.assign({}, s, { a, b: cum }); });
+  const pts = [sa.totPrev, sa.totCur, ...steps.flatMap(s => [s.a, s.b])];
+  let lo = Math.min(...pts), hi = Math.max(...pts);
+  const span = (hi - lo) || Math.abs(hi) * 0.05 || 1;
+  lo = Math.max(0, lo - span * 0.8); hi = hi + span * 0.08;
+  const X = v => Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100));
+  const totRow = (lab, v) => `<div class="br tot"><span class="nm">${esc(lab)}</span><span class="track"><i style="left:0;width:${X(v)}%;background:var(--neu)"></i></span><span class="vals">${money(v, cur)}</span></div>`;
+  const bridge = `<div class="panel"><h4>Growth bridge <small>${esc(sa.prev.label)} → ${esc(sa.cur.label)}${lo > 0 ? ` · axis starts at ${money(lo, cur)}` : ""}</small></h4>
+    <div class="bridge">
+      ${totRow(sa.prev.label + " total", sa.totPrev)}
+      ${steps.map(s => `<div class="br" title="${esc(s.name)}: ${money(s.delta, cur)} (${pct(s.chg)})"><span class="nm">${s.other ? "" : `<span class="sw" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${colors[s.name]}"></span>`}${esc(s.name)}</span>
+        <span class="track"><i style="left:${X(Math.min(s.a, s.b))}%;width:${Math.max(0.6, Math.abs(X(s.b) - X(s.a)))}%;background:var(${s.delta >= 0 ? "--pos" : "--neg"})"></i></span>
+        <span class="vals"><span class="${cls(s.delta)}">${money(s.delta, cur).replace(/^(?!−)/, s.delta > 0 ? "+" : "")}</span><b class="${cls(s.chg)}">${s.isNew ? "new" : pct(s.chg)}</b></span></div>`).join("")}
+      ${totRow(sa.cur.label + " total", sa.totCur)}
+    </div></div>`;
+
+  /* mix chart: last periods, annotated with growth in the chosen mode */
+  const shown = seg.rows.slice(-(seg.mode === "quarter" ? SHOW_Q : 5));
+  const series = seg.names.map(n => ({ name: n, color: colors[n], values: shown.map(r => r.data[n]) }));
+  const totG = shown.map(r => { const i = seg.rows.indexOf(r), j = segCmpIdx(seg, i, mode); if (j < 0) return null; const t = x => seg.names.reduce((s2, n) => s2 + n0(x.data[n]), 0); return growth(t(r), t(seg.rows[j])); });
+  const mixChart = `<div class="panel"><h4>Revenue mix <small>total ${w} % above bars</small></h4>${legend(series)}<div class="chart">${barChart(shown.map(r => r.label), series, { stacked: true, annot: totG, fmt: v => money(v, cur), title: title + " revenue" })}</div></div>`;
+
+  /* detail table */
+  const maxAbs = Math.max(0.01, ...sa.items.map(i => Math.abs(n0(i.chg))));
+  const dbar = v => isNum(v) ? `<span class="dbar"><i style="${v >= 0 ? `left:50%;width:${Math.min(50, v / maxAbs * 50)}%` : `right:50%;width:${Math.min(50, -v / maxAbs * 50)}%`};background:var(${v >= 0 ? "--pos" : "--neg"})"></i></span>` : "";
+  const rowsSorted = [...sa.items].sort((a, b) => n0(b.cur) - n0(a.cur));
+  const table = `<div class="tbl"><table><thead><tr><th>${id === "geo" ? "Region" : "Segment"}</th><th>${esc(sa.prev.label)}</th><th>${esc(sa.cur.label)}</th><th>$ change</th><th>% change ${esc(w)}</th><th></th><th title="Percentage points of total revenue growth this segment accounts for">Contribution to growth</th><th>Share of revenue</th><th>Share Δ</th></tr></thead><tbody>
+    ${rowsSorted.map(it => `<tr><td><span class="sw" style="background:${colors[it.name]}"></span>${esc(it.name)}</td><td>${money(it.prev, cur)}</td><td>${money(it.cur, cur)}</td>
+      <td class="${cls(it.delta)}">${isNum(it.delta) ? money(it.delta, cur).replace(/^(?!−)/, it.delta > 0 ? "+" : "") : "—"}</td>
+      <td class="big ${cls(it.chg)}">${it.isNew ? "new" : pct(it.chg)}</td><td>${dbar(it.chg)}</td>
+      <td class="${cls(it.contribPP)}">${pp(it.contribPP)}</td><td>${pctPlain(it.share)}</td><td class="${cls(it.shareChg)}">${pp(it.shareChg)}</td></tr>`).join("")}
+    <tr class="strong"><td>Total</td><td>${money(sa.totPrev, cur)}</td><td>${money(sa.totCur, cur)}</td><td class="${cls(sa.dTot)}">${money(sa.dTot, cur).replace(/^(?!−)/, sa.dTot > 0 ? "+" : "")}</td>
+      <td class="big ${cls(sa.totGrowth)}">${pct(sa.totGrowth)}</td><td>${dbar(sa.totGrowth)}</td><td class="${cls(sa.totGrowth)}">${pp(sa.totGrowth)}</td><td>100%</td><td></td></tr>
+  </tbody></table></div>`;
+
+  /* history heat table */
+  const histIdx = valid.slice(-(seg.mode === "quarter" ? SHOW_Q : 5));
+  const tot = x => seg.names.reduce((s2, n) => s2 + n0(x.data[n]), 0);
+  const heat = v => { if (!isNum(v)) return ""; const a = Math.min(1, Math.abs(v) / (mode === "qoq" && seg.mode === "quarter" ? 0.15 : 0.25)); return `background:color-mix(in srgb, var(${v >= 0 ? "--pos" : "--neg"}) ${Math.round(8 + a * 40)}%, transparent)`; };
+  const hist = `<div class="panel"><h4>${esc(w)} % change history <small>darker = bigger move</small></h4><div class="tbl heat"><table><thead><tr><th>${id === "geo" ? "Region" : "Segment"}</th>${histIdx.map(i => `<th>${esc(seg.rows[i].label)}</th>`).join("")}</tr></thead><tbody>
+    ${seg.names.map(n => `<tr><td><span class="sw" style="background:${colors[n]}"></span>${esc(n)}</td>${histIdx.map(i => { const v = growth(seg.rows[i].data[n], seg.rows[segCmpIdx(seg, i, mode)].data[n]); return `<td class="${cls(v)}" style="${heat(v)}">${pct(v)}</td>`; }).join("")}</tr>`).join("")}
+    <tr class="strong"><td>Total</td>${histIdx.map(i => { const v = growth(tot(seg.rows[i]), tot(seg.rows[segCmpIdx(seg, i, mode)])); return `<td class="${cls(v)}" style="${heat(v)}">${pct(v)}</td>`; }).join("")}</tr>
+  </tbody></table></div></div>`;
+
+  const picker = `<label class="note">Period <select data-sel="${id}" id="sel-${id}">${valid.slice().reverse().map(i => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(seg.rows[i].label)} vs ${esc(seg.rows[segCmpIdx(seg, i, mode)].label)}</option>`).join("")}</select></label>`;
+  const marg = id === "seg" ? `<p class="note">Segment margins and costs aren't in Financial Modeling Prep's data (it reports revenue by segment only). Where a company discloses segment operating income, it's in the segment note of the 10-Q/10-K.</p>` : "";
+  return `<div class="gblock" id="g-${id}">
+    <div class="ghead"><h3>${esc(title)} <span class="eyebrow" style="margin-left:6px">${seg.mode === "quarter" ? "quarterly" : "annual"} · ${esc(w)}</span></h3>${picker}</div>
+    ${head}
+    <div class="grid2">${bridge}${mixChart}</div>
+    ${table}
+    ${hist}
+    ${marg}
+  </div>`;
+}
+
+function bsSection(d, cur) {
+  const b = d.bs; if (!b.length) return `<p class="status">No balance sheet data.</p>`;
+  const n = b.length, L = b[n - 1], P = b[n - 2], Y = n >= 5 ? b[n - 5] : null;
+  const derive = r => r && Object.assign(r, {
+    _cash: n0(r.cashAndShortTermInvestments), _wc: n0(r.totalCurrentAssets) - n0(r.totalCurrentLiabilities),
+    _cr: ratio(r.totalCurrentAssets, r.totalCurrentLiabilities), _de: ratio(r.totalDebt, r.totalStockholdersEquity)
+  });
+  [L, P, Y].forEach(derive);
+  const A = L.totalAssets || 1;
+  const assets = [
+    ["Cash & ST investments", L.cashAndShortTermInvestments, "var(--c1)"],
+    ["Receivables", L.netReceivables, "var(--c7)"],
+    ["Inventory", L.inventory, "var(--c2)"],
+    ["Other current", n0(L.totalCurrentAssets) - n0(L.cashAndShortTermInvestments) - n0(L.netReceivables) - n0(L.inventory), "var(--c8)"],
+    ["PP&E", L.propertyPlantEquipmentNet, "var(--c3)"],
+    ["LT investments", L.longTermInvestments, "var(--c6)"],
+    ["Goodwill & intangibles", L.goodwillAndIntangibleAssets, "var(--c4)"],
+    ["Other non-current", n0(L.totalNonCurrentAssets) - n0(L.propertyPlantEquipmentNet) - n0(L.longTermInvestments) - n0(L.goodwillAndIntangibleAssets), "var(--c5)"]
+  ];
+  const eq = n0(L.totalEquity ?? L.totalStockholdersEquity);
+  const fund = [
+    ["Current liabilities", n0(L.totalCurrentLiabilities) , "var(--c5)"],
+    ["Long-term debt", L.longTermDebt, "var(--c2)"],
+    ["Other liabilities", n0(L.totalLiabilities) - n0(L.totalCurrentLiabilities) - n0(L.longTermDebt), "var(--c8)"],
+    ["Equity", Math.max(0, eq), "var(--c1)"]
+  ];
+  const stack = items => items.filter(([, v]) => n0(v) > 0).map(([lab, v, c]) => `<div style="flex:${n0(v) / A};background:${c}" title="${esc(lab)}: ${money(v, cur)}">${n0(v) / A > 0.06 ? `<span>${esc(lab)}</span><span>${pctPlain(n0(v) / A, 0)}</span>` : ""}</div>`).join("");
+  const map = `<div class="panel"><h4>Balance sheet map <small>${esc(L.label)} · total assets ${money(L.totalAssets, cur)}</small></h4>
+    <div class="bsmap"><div class="bscol"><span class="lbl"><span>Assets</span></span><div class="stack">${stack(assets)}</div></div>
+    <div class="bscol"><span class="lbl"><span>Liabilities + equity</span></span><div class="stack">${stack(fund)}</div></div></div>
+    ${legend([...assets, ...fund].filter(([, v]) => n0(v) > 0).map(([name, , color]) => ({ name, color })))}
+    ${eq < 0 ? `<p class="note">Shareholders' equity is negative (${money(eq, cur)}), usually from buybacks exceeding retained earnings, so it isn't drawn.</p>` : ""}</div>`;
+  const rows = [
+    ["grp", "Assets"], ["Cash & ST investments", "cashAndShortTermInvestments"], ["Receivables", "netReceivables"], ["Inventory", "inventory"],
+    ["Total current assets", "totalCurrentAssets", "strong"], ["PP&E (net)", "propertyPlantEquipmentNet"], ["Long-term investments", "longTermInvestments"],
+    ["Goodwill & intangibles", "goodwillAndIntangibleAssets"], ["Total assets", "totalAssets", "strong"],
+    ["grp", "Liabilities"], ["Accounts payable", "accountPayables"], ["Deferred revenue", "deferredRevenue"], ["Short-term debt", "shortTermDebt"],
+    ["Total current liabilities", "totalCurrentLiabilities", "strong"], ["Long-term debt", "longTermDebt"], ["Total liabilities", "totalLiabilities", "strong"],
+    ["grp", "Equity"], ["Retained earnings", "retainedEarnings"], ["Total equity", "totalStockholdersEquity", "strong"],
+    ["grp", "Position"], ["Total debt", "totalDebt"], ["Net debt (negative = net cash)", "netDebt", "strong"], ["Working capital", "_wc"],
+    ["Current ratio", "_cr", "", "x"], ["Debt / equity", "_de", "", "x"]
+  ];
+  const fv = (v, kind) => kind === "x" ? (isNum(v) ? v.toFixed(2) + "×" : "—") : money(v, cur);
+  let t = `<div class="tbl"><table><thead><tr><th>${esc(cur)}</th><th>${esc(L.label)}</th><th>${P ? esc(P.label) : ""}</th><th>${Y ? esc(Y.label) : "Year ago"}</th><th>QoQ change</th><th>YoY change</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    if (r[0] === "grp") { t += `<tr class="grp"><td colspan="6">${r[1]}</td></tr>`; return; }
+    const [name, f, k, kind] = r; if (![L, P, Y].some(x => x && isNum(x[f]) && x[f] !== 0)) return;
+    const dq = P && isNum(L[f]) && isNum(P[f]) ? L[f] - P[f] : null, dy = Y && isNum(L[f]) && isNum(Y[f]) ? L[f] - Y[f] : null;
+    const show = (dv, base) => kind === "x" ? (isNum(dv) ? (dv > 0 ? "+" : dv < 0 ? "−" : "") + Math.abs(dv).toFixed(2) : "—") : (isNum(dv) ? `${money(dv, cur).replace(/^(?!−)/, dv > 0 ? "+" : "")} <span style="opacity:.7">${pct(growth(L[f], base))}</span>` : "—");
+    t += `<tr class="${k || ""}"><td>${name}</td><td>${fv(L[f], kind)}</td><td>${P ? fv(P[f], kind) : ""}</td><td>${Y ? fv(Y[f], kind) : "—"}</td><td>${show(dq, P && P[f])}</td><td>${show(dy, Y && Y[f])}</td></tr>`;
+  });
+  t += `</tbody></table></div>`;
+  return `<div class="grid2">${map}<div class="panel"><h4>Cash vs debt <small>by quarter</small></h4>${legend([{ name: "Cash & ST inv.", color: "var(--c1)" }, { name: "Total debt", color: "var(--c5)" }])}<div class="chart">${barChart(b.slice(-SHOW_Q).map(r => r.label), [{ name: "Cash & ST inv.", color: "var(--c1)", values: b.slice(-SHOW_Q).map(r => r.cashAndShortTermInvestments) }, { name: "Total debt", color: "var(--c5)", values: b.slice(-SHOW_Q).map(r => r.totalDebt) }], { fmt: v => money(v, cur) })}</div></div></div>${t}`;
+}
+
+function cfSection(d, cur) {
+  const c = d.cf.slice(-SHOW_Q); if (!c.length) return `<p class="status">No cash flow data.</p>`;
+  const incBy = {}; d.inc.forEach(r => incBy[r.date] = r);
+  const rows = [
+    ["Operating cash flow", r => r.operatingCashFlow ?? r.netCashProvidedByOperatingActivities, "strong"],
+    ["Capital expenditure", r => r.capitalExpenditure, "sub"],
+    ["Free cash flow", r => r.freeCashFlow, "strong"],
+    ["FCF margin", r => incBy[r.date] ? ratio(r.freeCashFlow, incBy[r.date].revenue) : null, "", "pct"],
+    ["Stock-based compensation", r => r.stockBasedCompensation, "sub"],
+    ["Share buybacks", r => r.commonStockRepurchased, "sub"],
+    ["Dividends paid", r => r.commonDividendsPaid ?? r.netDividendsPaid, "sub"],
+    ["Acquisitions", r => r.acquisitionsNet, "sub"],
+    ["Net debt issued / (repaid)", r => r.netDebtIssuance, "sub"]
+  ];
+  let t = `<div class="tbl"><table><thead><tr><th>${esc(cur)}</th>${c.map(r => `<th>${esc(r.label)}</th>`).join("")}</tr></thead><tbody>`;
+  rows.forEach(([name, fn, k, kind]) => {
+    const vals = c.map(fn); if (vals.every(v => !isNum(v) || v === 0)) return;
+    t += `<tr class="${k}"><td>${name}</td>${vals.map(v => `<td class="${!isNum(v) ? "na" : ""}">${kind === "pct" ? pctPlain(v) : money(v, cur)}</td>`).join("")}</tr>`;
+  });
+  t += `</tbody></table></div>`;
+  const s = [{ name: "Operating cash flow", color: "var(--c3)", values: c.map(r => r.operatingCashFlow ?? r.netCashProvidedByOperatingActivities) }, { name: "Free cash flow", color: "var(--c1)", values: c.map(r => r.freeCashFlow) }];
+  const ret = [{ name: "Buybacks", color: "var(--c2)", values: c.map(r => Math.abs(n0(r.commonStockRepurchased))) }, { name: "Dividends", color: "var(--c4)", values: c.map(r => Math.abs(n0(r.commonDividendsPaid ?? r.netDividendsPaid))) }];
+  return `<div class="grid2"><div class="panel"><h4>Operating vs free cash flow</h4>${legend(s)}<div class="chart">${barChart(c.map(r => r.label), s, { fmt: v => money(v, cur) })}</div></div>
+    <div class="panel"><h4>Capital returned to shareholders</h4>${legend(ret)}<div class="chart">${barChart(c.map(r => r.label), ret, { stacked: true, fmt: v => money(v, cur) })}</div></div></div>${t}`;
+}
+
+/* ============ forecast ============ */
+function nextQuarter(L) {
+  if (L.period === "Q4") return { period: "Q1", fiscalYear: L.fiscalYear + 1 };
+  const k = +String(L.period).replace(/\D/g, "") || 0;
+  return { period: "Q" + (k + 1), fiscalYear: L.fiscalYear };
+}
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtDate = s => { if (!s) return "—"; const d = new Date(s + "T12:00:00Z"); return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+
+function buildForecast(d) {
+  const q = d.inc, n = q.length; if (n < 2) return null;
+  const L = q[n - 1], P = q[n - 2];
+  const nx = nextQuarter(L), label = qLabel(nx);
+  let yaI = q.findIndex(r => r.period === nx.period && r.fiscalYear === nx.fiscalYear - 1);
+  if (yaI < 0 && n >= 4) yaI = n - 4;
+  const ya = yaI >= 0 ? q[yaI] : null, yaPrev = yaI >= 1 ? q[yaI - 1] : null;
+  const er = (Array.isArray(d.earnings) ? d.earnings : []).filter(e => e && e.date).sort((a, b) => a.date < b.date ? -1 : 1);
+  const hasAct = e => isNum(e.revenueActual) || isNum(e.epsActual);
+  const up = er.find(e => !hasAct(e) && e.date > L.date && (isNum(e.revenueEstimated) || isNum(e.epsEstimated))) || null;
+  const rowFor = e => { const t = Date.parse(e.date); for (let i = q.length - 1; i >= 0; i--) { const t0 = Date.parse(q[i].date), t1 = i < q.length - 1 ? Date.parse(q[i + 1].date) : t0 + 110 * 864e5; if (t > t0 && t <= t1) return i; } return -1; };
+  const past = er.filter(hasAct).slice(-8).map(e => ({ ...e, rowIdx: rowFor(e), revS: growth(e.revenueActual, e.revenueEstimated), epsS: growth(e.epsActual, e.epsEstimated) }));
+  const rate = k => { const v = past.map(e => e[k]).filter(isNum); return v.length ? { beats: v.filter(x => x > 0).length, n: v.length, avg: mean(v) } : null; };
+
+  const f = { label, nx, L, P, ya, up, past, revTrack: rate("revS"), epsTrack: rate("epsS") };
+  // match each reported quarter with the estimate made for it (report date within ~4 months after quarter end)
+  const used = new Set();
+  f.hist = q.slice(-6).map(r => {
+    const t0 = Date.parse(r.date), qi = q.indexOf(r);
+    const t1 = qi < q.length - 1 ? Date.parse(q[qi + 1].date) : t0 + 110 * 864e5;   // must report before the next quarter ends
+    let e = er.find(x => hasAct(x) && !used.has(x) && Date.parse(x.date) > t0 && Date.parse(x.date) <= t1);
+    if (!e) e = er.find(x => !used.has(x) && isNum(x.revenueActual) && Math.abs(x.revenueActual - r.revenue) < Math.max(1e6, r.revenue * 1e-4));
+    if (e) used.add(e);
+    const epsA = e && isNum(e.epsActual) ? e.epsActual : r.epsDiluted;
+    return { label: r.label, rev: r.revenue, eps: epsA, estRev: e ? e.revenueEstimated : null, estEps: e ? e.epsEstimated : null,
+      revS: e ? growth(r.revenue, e.revenueEstimated) : null, epsS: e ? growth(epsA, e.epsEstimated) : null, reported: e ? e.date : null };
+  });
+  // every upcoming quarter with an estimate (usually one, sometimes two)
+  let lab = { period: L.period, fiscalYear: L.fiscalYear };
+  f.ups = er.filter(e => !hasAct(e) && e.date > L.date && (isNum(e.revenueEstimated) || isNum(e.epsEstimated))).slice(0, 3).map(e => {
+    lab = nextQuarter(lab); return { ...e, label: qLabel(lab) };
+  });
+  const hb = f.hist.filter(h => isNum(h.revS)), he = f.hist.filter(h => isNum(h.epsS));
+  f.chartTrack = { rev: hb.length ? { beats: hb.filter(h => h.revS > 0).length, n: hb.length } : null, eps: he.length ? { beats: he.filter(h => h.epsS > 0).length, n: he.length } : null };
+  if (up) {
+    f.date = up.date; f.cRev = up.revenueEstimated; f.cEps = up.epsEstimated;
+    f.cRevQoQ = growth(f.cRev, L.revenue); f.cRevYoY = ya ? growth(f.cRev, ya.revenue) : null;
+    f.cEpsQoQ = growth(f.cEps, L.epsDiluted); f.cEpsYoY = ya ? growth(f.cEps, ya.epsDiluted) : null;
+  }
+  const lastH = f.hist[f.hist.length - 1];
+  if (lastH && isNum(f.cEps) && isNum(lastH.eps)) f.cEpsQoQ = growth(f.cEps, lastH.eps);
+  const yaH = f.hist.find(h => h.label === (ya && ya.label));
+  if (yaH && isNum(f.cEps) && isNum(yaH.eps)) f.cEpsYoY = growth(f.cEps, yaH.eps);
+  // simple model: (1) year-ago quarter grown at recent YoY trend; (2) last quarter moved by last year's seasonal step
+  const trendG = mean([L.revYoY, P.revYoY]);
+  f.mTrend = ya && isNum(trendG) ? ya.revenue * (1 + trendG) : null;
+  f.mSeason = ya && yaPrev && yaPrev.revenue ? L.revenue * ya.revenue / yaPrev.revenue : null;
+  f.mRev = mean([f.mTrend, f.mSeason]);
+  f.trendG = trendG;
+  const yaOf = i => { const j = yearAgoIdx(q, i); return j >= 0 ? q[j] : null; };
+  const epsG = mean([growth(L.epsDiluted, yaOf(n - 1) && yaOf(n - 1).epsDiluted), growth(P.epsDiluted, yaOf(n - 2) && yaOf(n - 2).epsDiluted)]);
+  f.mEps = ya && isNum(ya.epsDiluted) && isNum(epsG) ? ya.epsDiluted * (1 + Math.max(-0.5, Math.min(1, epsG))) : null;
+  const omChg = mean([yaOf(n - 1) ? L.om - yaOf(n - 1).om : null, yaOf(n - 2) ? P.om - yaOf(n - 2).om : null]);
+  f.mOm = ya && isNum(ya.om) && isNum(omChg) ? ya.om + omChg : null;
+  f.mRevQoQ = growth(f.mRev, L.revenue); f.mRevYoY = ya ? growth(f.mRev, ya.revenue) : null;
+  f.modelVsCons = isNum(f.cRev) ? growth(f.mRev, f.cRev) : null;
+
+  // annual consensus
+  const est = (Array.isArray(d.est) ? d.est : []).filter(e => e && e.date).sort((a, b) => a.date < b.date ? -1 : 1);
+  const fyActual = fy => { const rs = q.filter(r => r.fiscalYear === fy); return rs.length === 4 ? { rev: sum(rs.map(r => r.revenue)), eps: sum(rs.map(r => r.epsDiluted)) } : null; };
+  const fut = est.filter(e => e.date > L.date).slice(0, 2);
+  f.annual = fut.map(e => {
+    const fy = +e.date.slice(0, 4), prevE = est.find(x => +x.date.slice(0, 4) === fy - 1), act = fyActual(fy - 1);
+    const baseRev = act ? act.rev : prevE && prevE.revenueAvg, baseEps = act ? act.eps : prevE && prevE.epsAvg;
+    return { fy, label: "FY" + String(fy).slice(-2) + "E", rev: e.revenueAvg, revLo: e.revenueLow, revHi: e.revenueHigh, eps: e.epsAvg, epsLo: e.epsLow, epsHi: e.epsHigh,
+      revG: growth(e.revenueAvg, baseRev), epsG: growth(e.epsAvg, baseEps), nRev: e.numAnalystsRevenue, nEps: e.numAnalystsEps,
+      fpe: isNum(d.profile.price) && e.epsAvg > 0 && (d.profile.currency || "USD") === d.currency ? d.profile.price / e.epsAvg : null };
+  });
+  if (d.pt && isNum(d.pt.targetConsensus)) f.pt = { ...d.pt, upside: growth(d.pt.targetConsensus, d.profile.price) };
+
+  // segment projection (only with quarterly segment data)
+  const s = d.seg;
+  if (s && s.mode === "quarter") {
+    const rows = s.rows, li = rows.length - 1;
+    const sya = rows.findIndex(r => r.period === nx.period && r.fiscalYear === nx.fiscalYear - 1);
+    if (sya >= 0) {
+      const yoyAt = (i, nm) => { const j = yearAgoIdx(rows, i); return j >= 0 && j !== i ? growth(rows[i].data[nm], rows[j].data[nm]) : null; };
+      f.seg = s.names.map(nm => {
+        const g = mean([yoyAt(li, nm), yoyAt(li - 1, nm)]);
+        const base = rows[sya].data[nm], est2 = isNum(base) && isNum(g) ? base * (1 + g) : null;
+        return { name: nm, last: rows[li].data[nm], est: est2, g, qoq: growth(est2, rows[li].data[nm]) };
+      }).filter(x => isNum(x.est) || isNum(x.last));
+      f.segLabels = { last: rows[li].label, ya: rows[sya].label };
+    }
+  }
+  return f;
+}
+
+function forecastInsight(f, cur, add) {
+  if (!f) return;
+  if (isNum(f.cRev)) {
+    const accel = isNum(f.cRevYoY) && isNum(f.L.revYoY) ? (Math.abs(f.cRevYoY - f.L.revYoY) < 0.01 ? "similar to" : f.cRevYoY > f.L.revYoY ? "an acceleration from" : "a slowdown from") : "";
+    let body = `Analysts expect <b>${money(f.cRev, cur)}</b> revenue for ${f.label} on ${fmtDate(f.date)}: ${pct(f.cRevQoQ)} QoQ and ${pct(f.cRevYoY)} YoY${accel ? `, ${accel} ${pct(f.L.revYoY)} last quarter` : ""}.`;
+    if (isNum(f.cEps)) body += ` EPS estimate ${f.cEps.toFixed(2)} (${pct(f.cEpsYoY)} YoY).`;
+    if (isNum(f.mRev)) body += ` The simple model in this tool lands at ${money(f.mRev, cur)}, ${pct(f.modelVsCons)} vs consensus.`;
+    if (f.revTrack) body += ` Revenue has beaten estimates in ${f.revTrack.beats} of the last ${f.revTrack.n} quarters (average surprise ${pct(f.revTrack.avg)}).`;
+    const tone = isNum(f.cRevYoY) && f.cRevYoY > 0 ? (f.revTrack && f.revTrack.beats / f.revTrack.n >= 0.6 ? "pos" : "neu") : "neg";
+    add(tone, `Next quarter · ${f.label}`, `Consensus expects revenue ${pct(MODE() === "qoq" ? f.cRevQoQ : f.cRevYoY)} ${MODE() === "qoq" ? "QoQ" : "YoY"}`, body);
+  } else if (isNum(f.mRev)) {
+    add("neu", `Next quarter · ${f.label}`, "No consensus estimate available", `There is no analyst estimate for ${f.label} in the data. The simple model in this tool projects ${money(f.mRev, cur)} (${pct(f.mRevQoQ)} QoQ, ${pct(f.mRevYoY)} YoY).`);
+  }
+}
+
+function forecastSection(d) {
+  const f = d.fc, cur = d.currency;
+  if (!f) return "";
+  const mode = MODE();
+  const card = (eyebrow, big, rows, foot) => `<div class="fc"><span class="eyebrow">${eyebrow}</span><span class="v">${big}</span>${rows ? `<span class="d">${rows}</span>` : ""}${foot ? `<span class="foot">${foot}</span>` : ""}</div>`;
+  const chips = (qq, yy) => `<span>QoQ ${chip(qq)}</span><span>YoY ${chip(yy)}</span>`;
+  const cards = [
+    card(`Consensus revenue · ${esc(f.label)}`, money(f.cRev, cur), isNum(f.cRev) ? chips(f.cRevQoQ, f.cRevYoY) : "", isNum(f.cRev) ? (isNum(f.L.revYoY) && isNum(f.cRevYoY) ? `Last quarter grew ${pct(f.L.revYoY)} YoY` : "") : "No estimate in the data"),
+    card("Consensus EPS", isNum(f.cEps) ? f.cEps.toFixed(2) : "—", isNum(f.cEps) ? chips(f.cEpsQoQ, f.cEpsYoY) : "", isNum(f.cEps) ? "Compared with EPS as reported against estimates" : ""),
+    card("Model revenue", money(f.mRev, cur), isNum(f.mRev) ? chips(f.mRevQoQ, f.mRevYoY) : "", isNum(f.modelVsCons) ? `${pct(f.modelVsCons)} vs consensus` : "Needs a year of history"),
+    card("Track record", f.revTrack ? `${f.revTrack.beats}/${f.revTrack.n}` : "—", f.revTrack ? `<span>Revenue beats · avg ${chip(f.revTrack.avg)}</span>` : "", f.epsTrack ? `EPS beat ${f.epsTrack.beats} of ${f.epsTrack.n}, avg surprise ${pct(f.epsTrack.avg)}` : "")
+  ].join("");
+
+  // charts: reported quarters with the consensus made for each (beat / miss), then upcoming quarters' consensus
+  const ups = f.ups.length ? f.ups : (isNum(f.mRev) ? [{ label: f.label, revenueEstimated: null, epsEstimated: null, modelOnly: true }] : []);
+  const labels = [...f.hist.map(h => h.label), ...ups.map(u => u.label + "E")];
+  const estFrom = f.hist.length;
+  const clickKeys = [...f.hist.map(h => h.reported), ...ups.map(u => u.date || null)];
+  const fills = labels.map((_, i) => i >= estFrom ? "var(--accent-soft)" : "var(--accent)");
+  const surpriseTxt = (s2, est, fmtE) => isNum(s2) ? [{ t: `${s2 >= 0 ? "Beat" : "Miss"} ${pct(s2, 1)}`, tone: s2 >= 0 ? "pos" : "neg", bold: true }, { t: `est ${fmtE(est)}` }] : null;
+  const prevRev = f.L.revenue, prevEps = f.hist.length ? f.hist[f.hist.length - 1].eps : null;
+  const expTxt = (v, base, yaBase, fmtV) => { if (!isNum(v)) return null; const g2 = mode === "qoq" ? growth(v, base) : growth(v, yaBase); return [{ t: "Exp " + fmtV(v), bold: true }, { t: `${pct(g2, 1)} ${mode === "qoq" ? "QoQ" : "YoY"}`, tone: isNum(g2) ? (g2 >= 0 ? "pos" : "neg") : "" }]; };
+  const yaFor = (u, k) => { const m0 = /Q(\d) FY(\d\d)/.exec(u.label); if (m0 && k === "epsDiluted") { const h = f.hist.find(x => x.label === `Q${m0[1]} FY${String(+m0[2] - 1).padStart(2, "0")}`); if (h && isNum(h.eps)) return h.eps; } const q2 = d.inc; const m = /Q(\d) FY(\d\d)/.exec(u.label); if (!m) return null; const r = q2.find(x => x.period === "Q" + m[1] && String(x.fiscalYear).slice(-2) === String(+m[2] - 1).padStart(2, "0")); return r ? r[k] : null; };
+
+  // revenue
+  let base = prevRev;
+  const revVals = [...f.hist.map(h => h.rev), ...ups.map(u => isNum(u.revenueEstimated) ? u.revenueEstimated : (u.modelOnly ? f.mRev : null))];
+  const revMarks = [...f.hist.map(h => h.estRev), ...ups.map(() => null)];
+  const revModel = labels.map((_, i) => i === estFrom && isNum(f.mRev) && !ups[0].modelOnly ? f.mRev : null);
+  const revTxt = [...f.hist.map(h => surpriseTxt(h.revS, h.estRev, v => money(v, cur))), ...ups.map(u => { const v = isNum(u.revenueEstimated) ? u.revenueEstimated : (u.modelOnly ? f.mRev : null); const t = expTxt(v, base, yaFor(u, "revenue"), x => money(x, cur)); base = v; return t; })];
+  // eps
+  let baseE = prevEps;
+  const epsVals = [...f.hist.map(h => h.eps), ...ups.map(u => u.epsEstimated)];
+  const epsMarks = [...f.hist.map(h => h.estEps), ...ups.map(() => null)];
+  const epsModel = labels.map((_, i) => i === estFrom && isNum(f.mEps) && !ups[0].modelOnly ? f.mEps : null);
+  const epsTxt = [...f.hist.map(h => surpriseTxt(h.epsS, h.estEps, v => v.toFixed(2))), ...ups.map(u => { const t = expTxt(u.epsEstimated, baseE, yaFor(u, "epsDiluted"), x => x.toFixed(2)); baseE = u.epsEstimated; return t; })];
+
+  const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Consensus for upcoming quarter", color: "var(--accent-soft)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
+  const trackTxt = t => t ? `beat ${t.beats} of ${t.n}` : "";
+  const chart = `<div class="panel"><h4>Revenue: actual vs expectations <small>${esc(trackTxt(f.chartTrack.rev))} · click a quarter for its price chart</small></h4>${lg(revModel.some(isNum))}
+      <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
+  const epsChart = `<div class="panel"><h4>EPS: actual vs expectations <small>${esc(trackTxt(f.chartTrack.eps))}</small></h4>${lg(epsModel.some(isNum))}
+      <div class="chart">${barChart(labels, [{ name: "EPS", color: "var(--accent)", values: epsVals }], { clickKeys, annotText: epsTxt, fills, marks: epsMarks, markName: "Consensus", marks2: epsModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => v.toFixed(2), title: "EPS actual vs expectations" })}</div></div>`;
+
+  // annual + target
+  const an = f.annual && f.annual.length ? `<div class="tbl"><table><thead><tr><th>Consensus</th>${f.annual.map(a => `<th>${esc(a.label)}</th>`).join("")}</tr></thead><tbody>
+      <tr class="strong"><td>Revenue</td>${f.annual.map(a => `<td>${money(a.rev, cur)}</td>`).join("")}</tr>
+      <tr class="sub"><td>Growth</td>${f.annual.map(a => `<td class="${cls(a.revG)}">${pct(a.revG)}</td>`).join("")}</tr>
+      <tr class="sub"><td>Range</td>${f.annual.map(a => `<td>${money(a.revLo, cur)} – ${money(a.revHi, cur)}</td>`).join("")}</tr>
+      <tr class="strong"><td>EPS</td>${f.annual.map(a => `<td>${isNum(a.eps) ? a.eps.toFixed(2) : "—"}</td>`).join("")}</tr>
+      <tr class="sub"><td>Growth</td>${f.annual.map(a => `<td class="${cls(a.epsG)}">${pct(a.epsG)}</td>`).join("")}</tr>
+      <tr><td>Forward P/E</td>${f.annual.map(a => `<td>${isNum(a.fpe) ? a.fpe.toFixed(1) + "×" : "—"}</td>`).join("")}</tr>
+      <tr class="sub"><td>Analysts (rev / EPS)</td>${f.annual.map(a => `<td>${a.nRev ?? "—"} / ${a.nEps ?? "—"}</td>`).join("")}</tr>
+    </tbody></table></div>` : `<p class="note">No annual analyst estimates in the data.</p>`;
+  const pt = f.pt ? `<div class="pt"><div class="pthead"><span class="eyebrow">Analyst price target</span><span class="v">${f.pt.targetConsensus.toFixed(2)}</span><span class="d">${chip(f.pt.upside)} vs current price ${isNum(d.profile.price) ? d.profile.price.toFixed(2) : "—"}</span></div>
+      ${isNum(f.pt.targetLow) && isNum(f.pt.targetHigh) && isNum(d.profile.price) ? ptRange(f.pt.targetLow, f.pt.targetHigh, f.pt.targetConsensus, d.profile.price) : ""}</div>` : "";
+  const annual = `<div class="panel"><h4>Full-year consensus</h4>${an}${pt}</div>`;
+
+  // beat history
+  const gW = mode === "qoq" ? "QoQ" : "YoY";
+  const yaRev = lab => { const m = /Q(\d) FY(\d\d)/.exec(lab); if (!m) return null; const r = d.inc.find(x => x.period === "Q" + m[1] && String(x.fiscalYear).slice(-2) === String(+m[2] - 1).padStart(2, "0")); return r ? r.revenue : null; };
+  let upBase = f.L.revenue;
+  const upCalc = f.ups.map(u => { const base = mode === "qoq" ? upBase : yaRev(u.label); const g = growth(u.revenueEstimated, base); if (isNum(u.revenueEstimated)) upBase = u.revenueEstimated; return { ...u, estG: g }; });
+  const gcell = v => `<td class="${cls(v)}">${pct(v)}</td>`;
+  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td>${gcell(u.estG)}<td>upcoming</td><td></td><td></td>
+      <td>${isNum(u.epsEstimated) ? u.epsEstimated.toFixed(2) : "—"}</td><td>upcoming</td><td></td></tr>`).reverse().join("");
+  const pastRows = [...f.past].reverse().map(e => {
+    const i = e.rowIdx, bi = i >= 0 ? (mode === "qoq" ? i - 1 : yearAgoIdx(d.inc, i)) : -1;
+    const base = bi >= 0 && bi !== i ? d.inc[bi].revenue : null;
+    const lab = i >= 0 ? d.inc[i].label + " · " : "";
+    return `<tr class="clk" data-evt="${esc(e.date)}" tabindex="0" title="Show the price chart ±30 days around this report"><td>${esc(lab + fmtDate(e.date))} <span class="go">↗</span></td><td>${money(e.revenueEstimated, cur)}</td>${gcell(growth(e.revenueEstimated, base))}<td>${money(e.revenueActual, cur)}</td>${gcell(growth(e.revenueActual, base))}<td class="${cls(e.revS)}"><b>${pct(e.revS)}</b></td>
+      <td>${isNum(e.epsEstimated) ? e.epsEstimated.toFixed(2) : "—"}</td><td>${isNum(e.epsActual) ? e.epsActual.toFixed(2) : "—"}</td><td class="${cls(e.epsS)}">${pct(e.epsS)}</td></tr>`;
+  }).join("");
+  const ph = f.past.length || f.ups.length ? `<div class="tbl"><table><thead>
+    <tr class="gh"><th></th><th colspan="5">Revenue</th><th colspan="3">EPS</th></tr>
+    <tr><th>Quarter · report date</th><th>Estimate</th><th>Est. growth ${gW}</th><th>Actual</th><th>Actual growth ${gW}</th><th>Surprise</th><th>Estimate</th><th>Actual</th><th>Surprise</th></tr></thead><tbody>
+    ${upRows}${pastRows}
+  </tbody></table></div>` : "";
+
+  // segment projection
+  const sp = f.seg && f.seg.length ? `<div class="panel"><h4>Segment projection for ${esc(f.label)} <small>model: ${esc(f.segLabels.ya)} grown at each segment's recent YoY trend</small></h4><div class="tbl"><table><thead><tr><th>Segment</th><th>${esc(f.segLabels.last)} actual</th><th>${esc(f.label)} model</th><th>QoQ</th><th>Trend YoY</th></tr></thead><tbody>
+    ${f.seg.map(x => `<tr><td>${esc(x.name)}</td><td>${money(x.last, cur)}</td><td>${money(x.est, cur)}</td><td class="big ${cls(x.qoq)}">${pct(x.qoq)}</td><td class="${cls(x.g)}">${pct(x.g)}</td></tr>`).join("")}
+  </tbody></table></div></div>` : (d.seg ? `<p class="note">A segment-level projection needs quarterly segment data, which your Financial Modeling Prep plan doesn't return.</p>` : "");
+
+  const method = `<p class="note">It averages two simple projections. The first takes the same quarter last year (${f.ya ? esc(f.ya.label) : "—"}) and grows it at the average YoY rate of the last two quarters (${pct(f.trendG)}): ${money(f.mTrend, cur)}. The second takes last quarter and applies the seasonal step seen between the same two quarters a year ago: ${money(f.mSeason, cur)}.${isNum(f.mOm) ? ` On the same basis operating margin would be about ${pctPlain(f.mOm)}.` : ""} It's a statistical baseline to sanity-check consensus, not a prediction.</p>`;
+
+  return `<section class="sec" id="forecast">
+    <div class="sec-h"><div><span class="eyebrow">Next reporting quarter</span><h2>Forecast: ${esc(f.label)}</h2>
+      <p>${f.date ? `Expected report date ${esc(fmtDate(f.date))}. ` : ""}Wall Street consensus from Financial Modeling Prep, beside a simple model built from this company's own seasonality and recent growth.</p></div></div>
+    <div class="fcards">${cards}</div>
+    <div class="grid2">${chart}${epsChart}</div>
+    ${ph ? `<div class="panel"><h4><span>Estimates vs actuals</span><button type="button" class="btn ghost sm" data-pxmode="general">Price chart</button></h4>
+      <p class="note">Click a row to see how the stock traded ±30 days around that report. Growth is ${mode === "qoq" ? "vs the previous quarter" : "vs the same quarter last year"}; change it with the Compare switch.</p>${ph}</div>` : ""}
+    <div class="panel pxpanel" id="pxPanel" hidden></div>
+    <div class="grid2">${annual}<div class="panel"><h4>How the model works</h4>${method}</div></div>
+    ${sp}
+  </section>`;
+}
+
+function ptRange(lo, hi, cons, price) {
+  const a = Math.min(lo, price), b = Math.max(hi, price), span = (b - a) || 1;
+  const X = v => ((v - a) / span * 100).toFixed(2);
+  return `<div class="ptbar" aria-label="Price target range"><span class="rng" style="left:${X(lo)}%;width:${(X(hi) - X(lo)).toFixed(2)}%"></span>
+    <span class="tk cons" style="left:${X(cons)}%" title="Consensus ${cons.toFixed(2)}"></span><span class="tk px" style="left:${X(price)}%" title="Price ${price.toFixed(2)}"></span></div>
+    <div class="ptlab"><span>Low ${lo.toFixed(0)}</span><span><i class="dot px"></i>Price <i class="dot cons"></i>Consensus</span><span>High ${hi.toFixed(0)}</span></div>`;
+}
+
+/* ============ price chart (OHLC candlesticks) ============ */
+const addDays = (iso, n) => { const t = new Date(iso + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+const shortDate = s => { const d = new Date(s + "T12:00:00Z"); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+const monYr = s => { const d = new Date(s + "T12:00:00Z"); return d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }); };
+const fmtVol = v => !isNum(v) ? "—" : v >= 1e9 ? (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(0) + "K" : String(v);
+
+async function prices(sym, from, to) {
+  const r = await api("historical-price-eod/full", { symbol: sym, from, to });
+  return (Array.isArray(r) ? r : []).filter(x => x && x.date && isNum(x.open) && isNum(x.high) && isNum(x.low) && isNum(x.close))
+    .map(x => ({ date: x.date, open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume }))
+    .sort((a, b) => a.date < b.date ? -1 : 1);
+}
+// weekly OHLC from daily OHLC: first open, highest high, lowest low, last close, summed volume
+function toWeekly(rows) {
+  const out = []; let cur = null, key = null;
+  rows.forEach(r => {
+    const d = new Date(r.date + "T12:00:00Z"), k = addDays(r.date, -((d.getUTCDay() + 6) % 7));
+    if (k !== key) { if (cur) out.push(cur); key = k; cur = { date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: n0(r.volume), end: r.date }; }
+    else { cur.high = Math.max(cur.high, r.high); cur.low = Math.min(cur.low, r.low); cur.close = r.close; cur.volume += n0(r.volume); cur.end = r.date; }
+  });
+  if (cur) out.push(cur);
+  return out;
+}
+
+function reportList(d) {
+  const f = d.fc; if (!f) return [];
+  const past = f.past.map(e => ({ date: e.date, label: e.rowIdx >= 0 ? d.inc[e.rowIdx].label : fmtDate(e.date), revS: e.revS, epsS: e.epsS, upcoming: false }));
+  const ups = f.ups.map(u => ({ date: u.date, label: u.label, upcoming: true }));
+  return [...past, ...ups].sort((a, b) => a.date < b.date ? -1 : 1);
+}
+const repTone = r => r.upcoming ? "neu" : isNum(r.revS) ? (r.revS >= 0 ? "pos" : "neg") : "neu";
+const repSub = r => r.upcoming ? "upcoming" : isNum(r.revS) ? `${r.revS >= 0 ? "Beat" : "Miss"} ${pct(r.revS)}` : "";
+
+// index of the candle that contains (or first follows) a date; beyond the data -> past the end
+function idxForDate(rows, date) {
+  for (let i = 0; i < rows.length; i++) { const end = rows[i].end || rows[i].date; if (end >= date) return i; }
+  return rows.length + 1;
+}
+
+function candleChart(rows, o = {}) {
+  const Wd = Math.max(320, Math.round(o.width || 720)), Ht = Math.round(Math.min(460, Math.max(300, Wd * 0.48))), m = { t: 34, r: 58, b: 26, l: 8 }, volH = Wd < 500 ? 44 : 62, gap = 12;
+  const markers = (o.markers || []).map(mk => ({ ...mk, i: idxForDate(rows, mk.date) }));
+  const slots = Math.max(rows.length, ...markers.map(mk => mk.i + 2));
+  const pw = Wd - m.l - m.r, ph = Ht - m.t - m.b - volH - gap, bw = pw / Math.max(1, slots);
+  const lo = Math.min(...rows.map(r => r.low)), hi = Math.max(...rows.map(r => r.high)), pad = (hi - lo) * 0.05 || hi * 0.01;
+  const yt = niceTicks(lo - pad, hi + pad, 5), y0 = yt[0], y1 = yt[yt.length - 1];
+  const Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * ph;
+  const vmax = Math.max(...rows.map(r => n0(r.volume))) || 1, vTop = m.t + ph + gap, VY = v => vTop + volH - (n0(v) / vmax) * volH;
+  const X = i => m.l + i * bw + bw / 2;
+  let g = "";
+  if (o.band) { const [a, b] = o.band; if (a <= b && a < rows.length) g += `<rect x="${X(a) - bw / 2}" y="${m.t}" width="${(Math.min(b, rows.length - 1) - a + 1) * bw}" height="${ph + gap + volH}" fill="var(--accent-soft)" opacity=".8"/>`; }
+  yt.forEach(t => g += `<line class="gl" x1="${m.l}" x2="${Wd - m.r}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${Wd - m.r + 6}" y="${Y(t) + 3.5}">${t.toFixed(t >= 1000 ? 0 : 2)}</text>`);
+  g += `<line class="gl" x1="${m.l}" x2="${Wd - m.r}" y1="${vTop + volH}" y2="${vTop + volH}"/><text x="${Wd - m.r + 6}" y="${vTop + 10}">${fmtVol(vmax)}</text>`;
+  // x labels: about 6, never crowded
+  const step = Math.max(1, Math.ceil(rows.length / Math.max(3, Math.floor(Wd / 120))));
+  for (let i = Math.floor(step / 2); i < rows.length; i += step) g += `<text x="${X(i)}" y="${Ht - 8}" text-anchor="middle">${esc(o.weekly || rows.length > 140 ? monYr(rows[i].date) : shortDate(rows[i].date))}</text>`;
+  const cw = Math.max(1, Math.min(12, bw * 0.66));
+  rows.forEach((r, i) => {
+    const up = r.close >= r.open, col = up ? "var(--pos)" : "var(--neg)", x = X(i), yo = Y(r.open), yc = Y(r.close);
+    g += `<line x1="${x}" x2="${x}" y1="${Y(r.high)}" y2="${Y(r.low)}" stroke="${col}" stroke-width="1"/>`;
+    g += `<rect x="${x - cw / 2}" y="${Math.min(yo, yc)}" width="${cw}" height="${Math.max(1, Math.abs(yo - yc))}" fill="${col}"/>`;
+    g += `<rect x="${x - cw / 2}" y="${VY(r.volume)}" width="${cw}" height="${Math.max(0.5, vTop + volH - VY(r.volume))}" fill="${col}" opacity=".35"/>`;
+  });
+  const mxs = markers.map(mk => mk.i < rows.length ? X(mk.i) - bw / 2 : X(Math.min(mk.i, slots - 1)));
+  const minGap = mxs.length > 1 ? Math.min(...mxs.slice(1).map((x, k) => x - mxs[k])) : Infinity;
+  markers.forEach((mk, k) => {
+    const x = mxs[k];
+    if (minGap < 74 && !mk.active) mk.sub = "";
+    if (minGap < 46 && !mk.active) mk.label = k % 2 ? "" : mk.label;
+    const tone = mk.tone === "pos" ? "--pos" : mk.tone === "neg" ? "--neg" : "--muted";
+    const inner = `<line x1="${x}" x2="${x}" y1="${m.t - 4}" y2="${vTop + volH}" stroke="var(${mk.active ? "--accent" : "--ink"})" stroke-width="${mk.active ? 2 : 1.2}" stroke-dasharray="4 3"/>
+      <text x="${Math.min(Wd - m.r - 4, Math.max(m.l + 24, x))}" y="${m.t - 18}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${esc(mk.label)}</text>
+      <text x="${Math.min(Wd - m.r - 4, Math.max(m.l + 24, x))}" y="${m.t - 7}" text-anchor="middle" style="fill:var(${tone});font-weight:500">${esc(mk.sub || "")}</text>`;
+    g += mk.key ? `<g class="mk" data-evt="${esc(mk.key)}" role="button" tabindex="0" aria-label="Show trading around ${esc(mk.label)} report"><rect x="${x - 26}" y="${m.t - 30}" width="52" height="${ph + gap + volH + 30}" fill="transparent"/>${inner}<title>Zoom to ±30 days around this report</title></g>` : inner;
+  });
+  g += `<line class="cross" x1="0" x2="0" y1="${m.t}" y2="${vTop + volH}" stroke="var(--muted)" stroke-width="1" opacity="0"/>`;
+  g += `<rect class="hit" x="${m.l}" y="${m.t}" width="${pw}" height="${ph + gap + volH}" fill="transparent" style="pointer-events:${markers.some(mk => mk.key) ? "none" : "all"}"/>`;
+  return { svg: `<svg viewBox="0 0 ${Wd} ${Ht}" class="candles" role="img" aria-label="${esc(o.title || "Price chart")}">${g}</svg>`, geom: { m, bw, slots, Wd, X } };
+}
+
+function attachCandleHover(wrap, rows, geom, readout, defIdx) {
+  const svg = wrap.querySelector("svg.candles"); if (!svg || !rows.length) return;
+  const cross = svg.querySelector(".cross");
+  const show = i => {
+    const r = rows[i]; if (!r) return;
+    const prev = rows[i - 1], chg = prev ? growth(r.close, prev.close) : null;
+    const dt = new Date(r.date + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    readout.innerHTML = `<b>${esc(r.end && r.end !== r.date ? `Week of ${shortDate(r.date)}` : dt)}</b><span>O ${r.open.toFixed(2)}</span><span>H ${r.high.toFixed(2)}</span><span>L ${r.low.toFixed(2)}</span><span>C ${r.close.toFixed(2)}</span><span class="${cls(chg)}">${pct(chg, 2)}</span><span>Vol ${fmtVol(r.volume)}</span>`;
+    const x = geom.X(i); cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("opacity", ".6");
+  };
+  const at = ev => {
+    const b = svg.getBoundingClientRect(); if (!b.width) return;
+    const vx = (ev.clientX - b.left) / b.width * geom.Wd;
+    const i = Math.floor((vx - geom.m.l) / geom.bw);
+    if (i >= 0 && i < rows.length) show(i);
+  };
+  svg.addEventListener("pointermove", at);
+  svg.addEventListener("pointerdown", at);
+  svg.addEventListener("pointerleave", () => { show(defIdx); });
+  show(defIdx);
+}
+
+async function renderPx(scroll) {
+  const box = document.getElementById("pxPanel"), px = STATE.px, d = STATE.d;
+  if (!box) return;
+  if (!px || !px.open) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  const reps = reportList(d), token = ++STATE.pxSeq;
+  const rep = px.mode === "event" ? reps.find(r => r.date === px.date) : null;
+  const chips = `<div class="pxchips" role="group" aria-label="Pick an earnings report">${reps.map(r => `<button type="button" class="pxchip ${rep && rep.date === r.date ? "on" : ""}" data-evt="${esc(r.date)}"><i class="dot" style="background:var(--${repTone(r) === "neu" ? "muted" : repTone(r)})"></i>${esc(r.label)}<span>${esc(shortDate(r.date))}${repSub(r) ? " · " + esc(repSub(r)) : ""}</span></button>`).join("")}</div>`;
+  const head = `<div class="pxhead"><div><span class="eyebrow">${px.mode === "event" ? "Earnings reaction · ±30 days" : "Price history · daily OHLC" + (px.range === "2Y" ? " (weekly candles)" : "")}</span>
+      <h4 class="pxt">${px.mode === "event" && rep ? `How ${esc(d.symbol)} traded around the ${esc(rep.label)} report <small>${esc(fmtDate(rep.date))}</small>` : `${esc(d.symbol)} share price`}</h4></div>
+    <div class="pxbtns">${px.mode === "event" ? `<button type="button" class="btn ghost sm" data-pxmode="general">← Full chart</button>` :
+      `<div class="seg" role="group" aria-label="Range">${["6M", "1Y", "2Y"].map(k => `<button type="button" data-pxrange="${k}" aria-pressed="${px.range === k}">${k}</button>`).join("")}</div>`}
+      <button type="button" class="btn ghost sm" data-pxclose="1" aria-label="Close price chart">Close</button></div></div>`;
+  box.innerHTML = head + `<div class="skel" style="height:300px"></div>`;
+  if (scroll) box.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  try {
+    let rows, markers = [], band = null, stats = "", defIdx, note = "";
+    if (px.mode === "event") {
+      const from = addDays(px.date, -30), to = addDays(px.date, 30);
+      rows = await prices(d.symbol, from, to < todayISO() ? to : todayISO());
+      if (token !== STATE.pxSeq) return;
+      if (!rows.length) throw new Error("No price data returned for this window.");
+      const before = rows.filter(r => r.date < px.date), on = rows.find(r => r.date === px.date), after = rows.filter(r => r.date > px.date);
+      const c0 = before.length ? before[before.length - 1] : null, a1 = after[0] || null, last = rows[rows.length - 1];
+      const iOn = on ? rows.indexOf(on) : (a1 ? rows.indexOf(a1) : rows.length);
+      if (iOn < rows.length) band = [iOn, Math.min(rows.length - 1, a1 ? rows.indexOf(a1) : iOn)];
+      markers = [{ date: px.date, label: rep ? rep.label : "Report", sub: rep ? repSub(rep) : "", tone: rep ? repTone(rep) : "neu", active: true }];
+      const stat = (lab, v, sub) => `<div class="pxstat"><span class="eyebrow">${lab}</span><span class="v ${cls(v)}">${pct(v, 1)}</span><span class="foot">${sub}</span></div>`;
+      const runUp = c0 ? growth(c0.close, rows[0].close) : null;
+      const react = c0 && a1 ? growth(a1.close, c0.close) : null;
+      const drift = a1 && after.length > 1 ? growth(last.close, a1.close) : null;
+      const total = growth(last.close, rows[0].close);
+      stats = `<div class="pxstats">
+        ${stat("Run-up into report", runUp, `${shortDate(rows[0].date)} → ${c0 ? shortDate(c0.date) : "—"} close`)}
+        ${stat("Earnings reaction", react, c0 && a1 ? `close ${shortDate(c0.date)} ${c0.close.toFixed(2)} → ${shortDate(a1.date)} ${a1.close.toFixed(2)}` : "not reported yet")}
+        ${stat("Drift after", drift, a1 && after.length > 1 ? `${shortDate(a1.date)} → ${shortDate(last.date)} close` : "—")}
+        ${stat("Whole window", total, `${shortDate(rows[0].date)} → ${shortDate(last.date)}`)}
+      </div>`;
+      const e = d.fc.past.find(x => x.date === px.date) || d.fc.ups.find(x => x.date === px.date);
+      if (e) note = `<p class="note">Revenue ${money(e.revenueActual ?? null, d.currency) !== "—" ? `${money(e.revenueActual, d.currency)} vs estimate ${money(e.revenueEstimated, d.currency)} (<b class="${cls(e.revS)}">${pct(e.revS)}</b>)` : `estimate ${money(e.revenueEstimated, d.currency)}`}; EPS ${isNum(e.epsActual) ? `${e.epsActual.toFixed(2)} vs ${isNum(e.epsEstimated) ? e.epsEstimated.toFixed(2) : "—"} (<b class="${cls(e.epsS)}">${pct(e.epsS)}</b>)` : `estimate ${isNum(e.epsEstimated) ? e.epsEstimated.toFixed(2) : "—"}`}. The shaded candles are the report day and the session after, so the reaction is captured whether results came before the open or after the close.${px.date > todayISO() ? " This report hasn't happened yet, so the chart shows the run-up so far." : ""}</p>`;
+      defIdx = a1 ? rows.indexOf(a1) : rows.length - 1;
+    } else {
+      const days = px.range === "6M" ? 183 : px.range === "2Y" ? 731 : 366;
+      const daily = await prices(d.symbol, addDays(todayISO(), -days), todayISO());
+      if (token !== STATE.pxSeq) return;
+      if (!daily.length) throw new Error("No price data returned.");
+      rows = px.range === "2Y" ? toWeekly(daily) : daily;
+      markers = reps.filter(r => r.date >= rows[0].date && r.date <= addDays(todayISO(), 60)).map(r => ({ date: r.date, label: r.label.replace(/^Q(\d) FY/, "Q$1 '"), sub: repSub(r).replace("upcoming", "next"), tone: repTone(r), key: r.date }));
+      defIdx = rows.length - 1;
+      const chg = growth(rows[rows.length - 1].close, rows[0].close);
+      note = `<p class="note">${esc(px.range)} change <b class="${cls(chg)}">${pct(chg)}</b>. Click an earnings marker or a report below to zoom to ±30 days around it.</p>`;
+    }
+    const width = (box.querySelector(".pxread") ? box : box).clientWidth - 34;
+    const c = candleChart(rows, { width, markers, band, weekly: px.range === "2Y" && px.mode !== "event", title: `${d.symbol} candlestick chart` });
+    box.innerHTML = head + stats + `<div class="pxread" aria-live="polite"></div><div class="chart pxchart">${c.svg}</div>` + note + chips;
+    attachCandleHover(box.querySelector(".pxchart"), rows, c.geom, box.querySelector(".pxread"), defIdx);
+  } catch (e) {
+    if (token !== STATE.pxSeq) return;
+    box.innerHTML = head + `<div class="status err">Couldn't load prices: ${esc(e.message)}</div>` + chips;
+  }
+}
+
+function openPx(mode, date) {
+  STATE.px = Object.assign({ range: "1Y" }, STATE.px || {}, { open: true, mode, date: date || (STATE.px && STATE.px.date) });
+  renderPx(true);
+}
+
+/* ============ peers ============ */
+async function suggestedPeers(sym) {
+  const raw = await api("stock-peers", { symbol: sym }).catch(() => []);
+  const all = (Array.isArray(raw) ? raw : []).filter(x => x && x.symbol && x.symbol !== sym);
+  const us = all.filter(x => !x.symbol.includes("."));
+  const pool = us.length >= 3 ? us : all;
+  return pool.sort((a, b) => n0(b.mktCap) - n0(a.mktCap)).slice(0, 5).map(x => x.symbol);
+}
+
+async function peerMetrics(sym) {
+  const [prof, rat, km, inc, est] = await Promise.all([
+    api("profile", { symbol: sym }).then(x => x[0] || null).catch(() => null),
+    api("ratios-ttm", { symbol: sym }).then(x => x[0] || {}).catch(() => ({})),
+    api("key-metrics-ttm", { symbol: sym }).then(x => x[0] || {}).catch(() => ({})),
+    api("income-statement", { symbol: sym, period: "quarter", limit: FETCH_Q }).catch(e => { if (e.status === 401 || e.status === 403) throw e; return []; }),
+    api("analyst-estimates", { symbol: sym, period: "annual", limit: 10 }).catch(() => [])
+  ]);
+  if (!prof && !inc.length) throw new ApiError(`No data found for ${sym}`, 404);
+  const rows = enrichIncome([...inc].sort((a, b) => a.date < b.date ? -1 : 1));
+  const n = rows.length, L = rows[n - 1] || {};
+  const price = prof && prof.price, tradeCur = (prof && prof.currency) || "", repCur = L.reportedCurrency || tradeCur;
+  const es = (Array.isArray(est) ? est : []).filter(e => e && e.date).sort((a, b) => a.date < b.date ? -1 : 1);
+  const e = es.find(x => x.date > todayISO()) || null;
+  const eP = e ? es.find(x => +x.date.slice(0, 4) === +e.date.slice(0, 4) - 1) : null;
+  return {
+    sym, name: (prof && prof.companyName) || sym, price, tradeCur, repCur, mktCap: prof && prof.marketCap, label: L.label || "—",
+    revQoQ: L.revQoQ, revYoY: L.revYoY, gmQ: L.grossProfit ? L.gm : null, omQ: L.om, nmQ: L.nm,
+    gmT: rat.grossProfitMarginTTM || null, omT: rat.operatingProfitMarginTTM, nmT: rat.netProfitMarginTTM,
+    pe: rat.priceToEarningsRatioTTM, fpe: e && isNum(price) && e.epsAvg > 0 && tradeCur === repCur ? price / e.epsAvg : null, fyLabel: e ? "FY" + e.date.slice(2, 4) + "E" : "",
+    fwdRevG: e && eP ? growth(e.revenueAvg, eP.revenueAvg) : null,
+    evS: km.evToSalesTTM, evE: km.evToEBITDATTM, pfcf: rat.priceToFreeCashFlowRatioTTM, fcfY: km.freeCashFlowYieldTTM,
+    roic: km.returnOnInvestedCapitalTTM, ndE: km.netDebtToEBITDATTM, peg: rat.priceToEarningsGrowthRatioTTM
+  };
+}
+
+const mult = v => isNum(v) ? (v <= 0 ? "n/m" : v.toFixed(1) + "×") : "—";
+const multOk = v => isNum(v) && v > 0;
+function peerCols() {
+  const m = MODE(), basis = STATE.peerMargin || "q";
+  const mg = k => basis === "q" ? k + "Q" : k + "T";
+  return [
+    { k: "rev", grp: "Growth", label: `Revenue ${m === "qoq" ? "QoQ" : "YoY"}`, get: x => m === "qoq" ? x.revQoQ : x.revYoY, f: v => pct(v), better: "high", diff: "pp" },
+    { k: "rev2", grp: "Growth", label: `Revenue ${m === "qoq" ? "YoY" : "QoQ"}`, get: x => m === "qoq" ? x.revYoY : x.revQoQ, f: v => pct(v), better: "high", diff: "pp" },
+    { k: "fwd", grp: "Growth", label: "Next FY rev (est.)", get: x => x.fwdRevG, f: v => pct(v), better: "high", diff: "pp" },
+    { k: "gm", grp: `Margins (${basis === "q" ? "latest qtr" : "TTM"})`, label: "Gross", get: x => x[mg("gm")], f: v => pctPlain(v), better: "high", diff: "pp" },
+    { k: "om", grp: `Margins (${basis === "q" ? "latest qtr" : "TTM"})`, label: "Operating", get: x => x[mg("om")], f: v => pctPlain(v), better: "high", diff: "pp" },
+    { k: "nm", grp: `Margins (${basis === "q" ? "latest qtr" : "TTM"})`, label: "Net", get: x => x[mg("nm")], f: v => pctPlain(v), better: "high", diff: "pp" },
+    { k: "pe", grp: "Valuation", label: "P/E", get: x => x.pe, f: mult, val: true },
+    { k: "fpe", grp: "Valuation", label: "Fwd P/E", get: x => x.fpe, f: mult, val: true },
+    { k: "evS", grp: "Valuation", label: "EV/Sales", get: x => x.evS, f: mult, val: true },
+    { k: "evE", grp: "Valuation", label: "EV/EBITDA", get: x => x.evE, f: mult, val: true },
+    { k: "pfcf", grp: "Valuation", label: "P/FCF", get: x => x.pfcf, f: mult, val: true },
+    { k: "fcfY", grp: "Valuation", label: "FCF yield", get: x => x.fcfY, f: v => pctPlain(v), better: "high", diff: "pp" },
+    { k: "roic", grp: "Quality", label: "ROIC", get: x => x.roic, f: v => pctPlain(v, 0), better: "high", diff: "pp" },
+    { k: "ndE", grp: "Quality", label: "Net debt / EBITDA", get: x => x.ndE, f: v => isNum(v) ? v.toFixed(1) + "×" : "—", better: "low" }
+  ];
+}
+function median(arr) { const v = arr.filter(isNum).sort((a, b) => a - b); if (!v.length) return null; const h = v.length >> 1; return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2; }
+
+function peerInsights(me, peers) {
+  const out = [], m = MODE();
+  const med = get => median(peers.map(get).filter(v => isNum(v)));
+  const medV = get => median(peers.map(get).filter(multOk));
+  const rank = (get, hi = true) => { const all = [me, ...peers].filter(x => isNum(get(x))).sort((a, b) => hi ? get(b) - get(a) : get(a) - get(b)); const i = all.indexOf(me); return i >= 0 ? `${i + 1} of ${all.length}` : "—"; };
+  const g = x => m === "qoq" ? x.revQoQ : x.revYoY, gy = x => x.revYoY, om = x => x.omT, omq = x => x.omQ;
+  const gMed = med(g), gyMed = med(gy), omMed = med(om);
+  if (isNum(g(me)) && isNum(gMed)) {
+    const faster = g(me) > gMed;
+    out.push({ tone: faster ? "pos" : "neg", tag: `Growth · ${m === "qoq" ? "QoQ" : "YoY"}`, title: `Growing ${faster ? "faster" : "slower"} than peers`,
+      body: `${esc(me.sym)} revenue ${pct(g(me))} ${m === "qoq" ? "QoQ" : "YoY"} against a peer median of ${pct(gMed)}, ranking <b>${rank(g)}</b>.${m === "qoq" ? ` Peers report on different fiscal calendars, so QoQ can reflect seasonality. On YoY: ${pct(gy(me))} vs median ${pct(gyMed)}.` : ""}` });
+  }
+  if (isNum(om(me)) && isNum(omMed)) {
+    const d = om(me) - omMed;
+    out.push({ tone: d >= 0 ? "pos" : "neg", tag: "Margins", title: `Operating margin ${d >= 0 ? "above" : "below"} peers`,
+      body: `TTM operating margin ${pctPlain(om(me))} vs peer median ${pctPlain(omMed)} (${pp(d)}), ranking <b>${rank(om)}</b>. Latest quarter ${pctPlain(omq(me))} vs median ${pctPlain(med(omq))}.` });
+  }
+  const vals = [["EV/Sales", x => x.evS], ["EV/EBITDA", x => x.evE], ["Fwd P/E", x => x.fpe], ["P/E", x => x.pe]]
+    .map(([lab, get]) => { const v = get(me), mm = medV(get); return multOk(v) && isNum(mm) ? { lab, v, mm, prem: v / mm - 1 } : null; }).filter(Boolean);
+  if (vals.length) {
+    const avgPrem = mean(vals.map(v => v.prem));
+    const faster = isNum(gy(me)) && isNum(gyMed) ? gy(me) > gyMed : null, richer = isNum(om(me)) && isNum(omMed) ? om(me) > omMed : null;
+    let title, tone;
+    if (avgPrem > 0.15) { title = faster && richer ? "Premium backed by faster growth and higher margins" : faster || richer ? "Premium partly backed by fundamentals" : "Premium not backed by growth or margins"; tone = faster && richer ? "pos" : faster || richer ? "neu" : "neg"; }
+    else if (avgPrem < -0.15) { title = faster ? "Discount despite faster growth" : "Discount in line with slower growth"; tone = faster ? "pos" : "neu"; }
+    else { title = "Valued in line with peers"; tone = "neu"; }
+    out.push({ tone, tag: "Valuation", title, body: `Versus the peer median: ${vals.map(v => `${v.lab} ${mult(v.v)} vs ${mult(v.mm)} (<b>${pct(v.prem, 0)}</b>)`).join(", ")}. YoY growth ${pct(gy(me))} vs median ${pct(gyMed)}.` });
+  }
+  return out;
+}
+
+function scatterChart(pts, xLab, yLab, xf, yf) {
+  const P = pts.filter(p => isNum(p.x) && isNum(p.y));
+  if (P.length < 2) return `<p class="note">Not enough companies with both figures to plot.</p>`;
+  const Wd = 640, Ht = 320, m = { t: 16, r: 24, b: 44, l: 56 };
+  const xs = P.map(p => p.x), ys = P.map(p => p.y);
+  const xp = (Math.max(...xs) - Math.min(...xs)) * 0.12 || 0.02, yp = (Math.max(...ys) - Math.min(...ys)) * 0.12 || 1;
+  const xt = niceTicks(Math.min(...xs) - xp, Math.max(...xs) + xp), yt = niceTicks(Math.max(0, Math.min(...ys) - yp), Math.max(...ys) + yp);
+  const X = v => m.l + (v - xt[0]) / (xt[xt.length - 1] - xt[0]) * (Wd - m.l - m.r), Y = v => m.t + (1 - (v - yt[0]) / (yt[yt.length - 1] - yt[0])) * (Ht - m.t - m.b);
+  let g = yt.map(t => `<line class="gl" x1="${m.l}" x2="${Wd - m.r}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${m.l - 8}" y="${Y(t) + 3.5}" text-anchor="end">${yf(t)}</text>`).join("");
+  g += xt.map(t => `<line class="gl" x1="${X(t)}" x2="${X(t)}" y1="${m.t}" y2="${Ht - m.b}"/><text x="${X(t)}" y="${Ht - m.b + 16}" text-anchor="middle">${xf(t)}</text>`).join("");
+  if (xt[0] < 0 && xt[xt.length - 1] > 0) g += `<line class="zero" x1="${X(0)}" x2="${X(0)}" y1="${m.t}" y2="${Ht - m.b}"/>`;
+  const mx = median(P.filter(p => !p.me).map(p => p.x)), my = median(P.filter(p => !p.me).map(p => p.y));
+  if (isNum(mx) && isNum(my)) g += `<line x1="${X(mx)}" x2="${X(mx)}" y1="${m.t}" y2="${Ht - m.b}" stroke="var(--muted)" stroke-dasharray="3 4"/><line x1="${m.l}" x2="${Wd - m.r}" y1="${Y(my)}" y2="${Y(my)}" stroke="var(--muted)" stroke-dasharray="3 4"/><text x="${Wd - m.r}" y="${Y(my) - 5}" text-anchor="end">peer median</text>`;
+  g += `<text x="${(m.l + Wd - m.r) / 2}" y="${Ht - 6}" text-anchor="middle" style="fill:var(--ink)">${esc(xLab)} →</text><text transform="translate(14 ${(m.t + Ht - m.b) / 2}) rotate(-90)" text-anchor="middle" style="fill:var(--ink)">${esc(yLab)} →</text>`;
+  [...P].sort((a, b) => (a.me ? 1 : 0) - (b.me ? 1 : 0)).forEach(p => {
+    const right = X(p.x) > Wd - 110;
+    g += `<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${p.me ? 7 : 5}" fill="${p.me ? "var(--accent)" : "var(--c8)"}" stroke="var(--surface)" stroke-width="2"><title>${esc(p.label)}: ${xf(p.x)}, ${yf(p.y)}</title></circle>
+      <text x="${X(p.x) + (right ? -10 : 10)}" y="${Y(p.y) + 4}" text-anchor="${right ? "end" : "start"}" style="fill:${p.me ? "var(--accent)" : "var(--ink)"};font-weight:${p.me ? 600 : 500}">${esc(p.label)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="${esc(yLab)} against ${esc(xLab)}">${g}</svg>`;
+}
+
+function rankBars(items, fmt) {
+  const v = items.filter(i => isNum(i.v)).sort((a, b) => b.v - a.v);
+  if (!v.length) return `<p class="note">No data.</p>`;
+  const mx = Math.max(...v.map(i => Math.abs(i.v))) || 1, neg = v.some(i => i.v < 0);
+  return `<div class="bridge">${v.map(i => {
+    const w = (neg ? 50 : 100) * Math.abs(i.v) / mx, left = neg ? (i.v >= 0 ? 50 : 50 - w) : 0;
+    return `<div class="br ${i.me ? "me" : ""}"><span class="nm">${esc(i.label)}</span><span class="track"><i style="left:${left}%;width:${Math.max(0.6, w)}%;background:${i.me ? "var(--accent)" : i.v < 0 ? "var(--neg)" : "var(--c8)"}"></i></span><span class="vals">${fmt(i.v)}</span></div>`;
+  }).join("")}</div>`;
+}
+
+async function renderPeers() {
+  const d = STATE.d, pane = document.getElementById("pane-peers");
+  if (!d || !pane) return;
+  const main = d.symbol, token = ++STATE.peerSeq;
+  if (STATE.peerFor !== main) {
+    STATE.peerFor = main; STATE.peers = null; STATE.suggested = null;
+    try { const s = JSON.parse(store.get("peers:" + main) || "null"); if (Array.isArray(s)) STATE.peers = s; } catch (e) {}
+  }
+  if (!STATE.peers || !STATE.suggested) {
+    if (!STATE.peers) pane.innerHTML = `<div class="status">Finding peers for ${esc(main)}…</div>`;
+    const sug = await suggestedPeers(main);
+    if (token !== STATE.peerSeq) return;
+    STATE.suggested = sug;
+    if (!STATE.peers) STATE.peers = [...sug];
+  }
+  const syms = [main, ...STATE.peers.filter(s => s !== main)];
+  pane.innerHTML = peerControls(syms, {}) + `<div class="status">Loading ${syms.length} companies…</div><div class="skel"></div>`;
+  wirePeerControls();
+  const res = await Promise.allSettled(syms.map(peerMetrics));
+  if (token !== STATE.peerSeq) return;
+  const errs = {}, ok = [];
+  res.forEach((r, i) => { if (r.status === "fulfilled") ok.push(r.value); else errs[syms[i]] = r.reason && r.reason.message || "Failed"; });
+  const me = ok.find(x => x.sym === main), peers = ok.filter(x => x.sym !== main);
+  let html = peerControls(syms, errs);
+  if (!me) { pane.innerHTML = html + `<div class="status err">Couldn't load ${esc(main)} for comparison.</div>`; wirePeerControls(); return; }
+  if (!peers.length) { pane.innerHTML = html + `<div class="status">Add a ticker above to compare ${esc(main)} with peers.</div>`; wirePeerControls(); return; }
+
+  const cols = peerCols(), all = [me, ...peers];
+  const ins = peerInsights(me, peers);
+  html += `<section class="sec"><div class="sec-h"><div><span class="eyebrow">${esc(main)} vs ${peers.length} peer${peers.length > 1 ? "s" : ""}</span><h2>How it stacks up</h2></div></div>
+    <div class="insights">${ins.map(i => `<article class="ins ${i.tone}"><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><p>${i.body}</p></article>`).join("")}</div></section>`;
+
+  // table
+  const groups = []; cols.forEach(c => { const g = groups[groups.length - 1]; if (g && g.name === c.grp) g.n++; else groups.push({ name: c.grp, n: 1 }); });
+  const medOf = c => c.val ? median(peers.map(c.get).filter(multOk)) : median(peers.map(c.get));
+  const meds = cols.map(medOf);
+  const tint = (c, v, mm) => { if (!c.better || !isNum(v) || !isNum(mm) || v === mm) return ""; const good = c.better === "high" ? v > mm : v < mm; return good ? "better" : "worse"; };
+  const rowHtml = (x, isMe) => `<tr class="${isMe ? "me" : ""}"><td><b>${esc(x.sym)}</b> <span class="cn">${esc(x.name)}</span></td><td>${esc(x.label)}</td><td>${money(x.mktCap, x.tradeCur)}</td>
+    ${cols.map((c, i) => { const v = c.get(x); return `<td class="${tint(c, v, meds[i])}">${c.f(v)}</td>`; }).join("")}</tr>`;
+  const diffRow = `<tr class="vs"><td>${esc(main)} vs median</td><td></td><td></td>${cols.map((c, i) => {
+    const v = c.get(me), mm = meds[i];
+    if (c.val) return multOk(v) && isNum(mm) ? `<td>${pct(v / mm - 1, 0)} ${v > mm ? "premium" : "discount"}</td>` : "<td>—</td>";
+    if (!isNum(v) || !isNum(mm)) return "<td>—</td>";
+    return c.diff === "pp" ? `<td class="${c.better === "high" ? cls(v - mm) : ""}">${pp(v - mm)}</td>` : `<td>${Math.abs(v - mm) < 0.05 ? "0.0" : (v - mm > 0 ? "+" : "−") + Math.abs(v - mm).toFixed(1)}×</td>`;
+  }).join("")}</tr>`;
+  html += `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Comparison table</span><h2>Growth, margins and valuation</h2>
+      <p>Green and red mark better or worse than the peer median (median excludes ${esc(main)}). Valuation multiples are shown plain, with ${esc(main)}'s premium or discount in the last row. Each company's latest reported quarter is listed, as fiscal calendars differ.</p></div>
+      <div class="seg" role="group" aria-label="Margin basis" id="peerMarginSeg"><button type="button" data-pm="q" aria-pressed="${(STATE.peerMargin || "q") === "q"}">Latest quarter</button><button type="button" data-pm="t" aria-pressed="${STATE.peerMargin === "t"}">TTM</button></div></div>
+    <div class="tbl"><table class="peers"><thead>
+      <tr class="gh"><th></th><th></th><th></th>${groups.map(g => `<th colspan="${g.n}">${esc(g.name)}</th>`).join("")}</tr>
+      <tr><th>Company</th><th>Latest qtr</th><th>Mkt cap</th>${cols.map(c => `<th>${esc(c.label)}</th>`).join("")}</tr></thead><tbody>
+      ${rowHtml(me, true)}${peers.map(p => rowHtml(p, false)).join("")}
+      <tr class="med"><td>Peer median</td><td></td><td></td>${cols.map((c, i) => `<td>${c.f(meds[i])}</td>`).join("")}</tr>
+      ${diffRow}
+    </tbody></table></div></section>`;
+
+  // charts
+  const yOpts = { evS: ["EV/Sales", x => x.evS], evE: ["EV/EBITDA", x => x.evE], fpe: ["Forward P/E", x => x.fpe], pe: ["P/E", x => x.pe] };
+  const yk = STATE.peerY && yOpts[STATE.peerY] ? STATE.peerY : "evS", [yLab, yGet] = yOpts[yk];
+  const gGet = x => MODE() === "qoq" ? x.revQoQ : x.revYoY, gName = `Revenue growth ${MODE() === "qoq" ? "QoQ" : "YoY"}`;
+  const scatter = scatterChart(all.map(x => ({ x: x.revYoY, y: multOk(yGet(x)) ? yGet(x) : null, label: x.sym, me: x === me })), "Revenue growth YoY", yLab, v => pct(v, 0), v => v.toFixed(0) + "×");
+  html += `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Charts</span><h2>Growth against valuation</h2><p>Companies to the right grow faster; higher up means a richer multiple. Below the median line and right of it is the usual place to look for value.</p></div>
+      <label class="note">Valuation <select id="peerY">${Object.entries(yOpts).map(([k, [l]]) => `<option value="${k}" ${k === yk ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+    <div class="grid2"><div class="panel"><h4>${esc(yLab)} vs revenue growth YoY</h4><div class="chart">${scatter}</div></div>
+      <div class="panel"><h4>${esc(gName)} <small>latest quarter</small></h4>${rankBars(all.map(x => ({ label: x.sym, v: gGet(x), me: x === me })), v => pct(v))}</div>
+      <div class="panel"><h4>Operating margin <small>${(STATE.peerMargin || "q") === "q" ? "latest quarter" : "TTM"}</small></h4>${rankBars(all.map(x => ({ label: x.sym, v: (STATE.peerMargin || "q") === "q" ? x.omQ : x.omT, me: x === me })), v => pctPlain(v))}</div>
+      <div class="panel"><h4>${esc(yLab)} <small>lower is cheaper</small></h4>${rankBars(all.map(x => ({ label: x.sym, v: multOk(yGet(x)) ? yGet(x) : null, me: x === me })), mult)}</div></div>
+  </section>`;
+  pane.innerHTML = html;
+  wirePeerControls();
+}
+
+function peerControls(syms, errs) {
+  const main = syms[0];
+  return `<section class="sec peerctl"><div class="sec-h"><div><span class="eyebrow">Peer group</span><h2>Compare ${esc(main)} with peers</h2>
+    <p>Starts from Financial Modeling Prep's suggested peers (US listings first). Add any ticker or remove one; your list is remembered for ${esc(main)}.</p></div></div>
+    <div class="chips">
+      <span class="chipx main">${esc(main)}</span>
+      ${syms.slice(1).map(s => `<span class="chipx ${errs[s] ? "err" : ""}" title="${esc(errs[s] || "")}">${esc(s)}${errs[s] ? " · couldn't load" : ""}<button type="button" data-rm="${esc(s)}" aria-label="Remove ${esc(s)}">×</button></span>`).join("")}
+      <form class="addpeer" id="addPeerForm" autocomplete="off"><input id="addPeerInput" placeholder="Add ticker, e.g. MSFT" aria-label="Add a peer ticker" spellcheck="false"><button class="btn ghost" type="submit" style="height:34px">Add</button><div class="sugg" id="addPeerSugg" hidden></div></form>
+      <button class="btn ghost" type="button" id="resetPeers" style="height:34px">Reset to suggested</button>
+    </div></section>`;
+}
+
+function savePeers() { try { store.set("peers:" + STATE.peerFor, JSON.stringify(STATE.peers)); } catch (e) {} }
+function wirePeerControls() {
+  const pane = document.getElementById("pane-peers"); if (!pane) return;
+  pane.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", () => { STATE.peers = STATE.peers.filter(s => s !== b.dataset.rm); savePeers(); renderPeers(); }));
+  const inp = document.getElementById("addPeerInput"), sg = document.getElementById("addPeerSugg"), form = document.getElementById("addPeerForm");
+  const add = sym => {
+    sym = String(sym || "").trim().toUpperCase(); if (!sym) return;
+    if (sym === STATE.peerFor || STATE.peers.includes(sym)) { inp.value = ""; return; }
+    STATE.peers.push(sym); savePeers(); renderPeers();
+  };
+  if (inp) { attachSearch(inp, sg, add); form.addEventListener("submit", e => { e.preventDefault(); add(inp.value); }); }
+  const rs = document.getElementById("resetPeers"); if (rs) rs.addEventListener("click", () => { STATE.peers = [...(STATE.suggested || [])]; savePeers(); renderPeers(); });
+  pane.querySelectorAll("#peerMarginSeg button").forEach(b => b.addEventListener("click", () => { STATE.peerMargin = b.dataset.pm; store.set("peerMargin", b.dataset.pm); renderPeers(); }));
+  const py = document.getElementById("peerY"); if (py) py.addEventListener("change", () => { STATE.peerY = py.value; renderPeers(); });
+}
+
+/* generic ticker autocomplete */
+function attachSearch(input, sugg, onPick) {
+  let timer = null, items = [], active = -1, seq = 0;
+  const close = () => { sugg.hidden = true; active = -1; };
+  const show = () => {
+    if (!items.length) return close();
+    sugg.innerHTML = items.map((it, i) => `<button type="button" data-s="${esc(it.symbol)}" class="${i === active ? "on" : ""}"><b>${esc(it.symbol)}</b><span>${esc(it.name)}${it.exchange ? " · " + esc(it.exchange) : ""}</span></button>`).join("");
+    sugg.hidden = false;
+    sugg.querySelectorAll("button").forEach(b => b.addEventListener("mousedown", e => { e.preventDefault(); close(); input.value = ""; onPick(b.dataset.s); }));
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const qv = input.value.trim(); if (qv.length < 1) return close();
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      const [a, b] = await Promise.all([api("search-symbol", { query: qv, limit: 6 }).catch(() => []), api("search-name", { query: qv, limit: 6 }).catch(() => [])]);
+      if (my !== seq) return;
+      const seen = new Set(); items = [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].filter(x => x && x.symbol && !seen.has(x.symbol) && seen.add(x.symbol)).slice(0, 8)
+        .map(x => ({ symbol: x.symbol, name: x.name, exchange: x.exchange || x.exchangeShortName }));
+      active = -1; show();
+    }, 220);
+  });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !sugg.hidden && active >= 0 && items[active]) { e.preventDefault(); const s = items[active].symbol; close(); input.value = ""; onPick(s); return; }
+    if (sugg.hidden) return;
+    if (e.key === "ArrowDown") { active = Math.min(items.length - 1, active + 1); show(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { active = Math.max(-1, active - 1); show(); e.preventDefault(); }
+    else if (e.key === "Escape") close();
+  });
+  input.addEventListener("blur", () => setTimeout(close, 120));
+}
+
+/* ============ search / UI wiring ============ */
+(function wire() {
+  const input = document.getElementById("tickerInput"), sugg = document.getElementById("sugg");
+  attachSearch(input, sugg, sym => load(sym));
+  document.getElementById("searchForm").addEventListener("submit", e => { e.preventDefault(); sugg.hidden = true; load(input.value); });
+  STATE.tab = store.get("tab") === "peers" ? "peers" : "co";
+  STATE.peerMargin = store.get("peerMargin") === "t" ? "t" : "q";
+  const keyRow = document.getElementById("keyRow"), keyToggle = document.getElementById("keyToggle"), keyInput = document.getElementById("keyInput");
+  keyInput.value = getKey();
+  keyToggle.addEventListener("click", () => { keyRow.hidden = !keyRow.hidden; keyToggle.setAttribute("aria-expanded", String(!keyRow.hidden)); });
+  document.getElementById("keySave").addEventListener("click", () => {
+    store.set("fmpKey", keyInput.value.trim()); keyRow.hidden = true; keyToggle.setAttribute("aria-expanded", "false");
+    load(store.get("lastTicker") || "AAPL");
+  });
+  STATE.incMode = store.get("incMode") || "values";
+  STATE.cmp = store.get("cmpMode") === "yoy" ? "yoy" : "qoq";
+  const cmpBtns = document.querySelectorAll("#cmpSeg button");
+  const syncCmp = () => cmpBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === STATE.cmp)));
+  syncCmp();
+  cmpBtns.forEach(b => b.addEventListener("click", () => {
+    if (STATE.cmp === b.dataset.c) return;
+    STATE.cmp = b.dataset.c; store.set("cmpMode", STATE.cmp); syncCmp();
+    if (STATE.d) { const y = window.scrollY; render(STATE.d); window.scrollTo(0, y); }
+  }));
+  let rsT = null, lastW = window.innerWidth;
+  window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (window.innerWidth !== lastW && STATE.px && STATE.px.open) { lastW = window.innerWidth; renderPx(false); } }, 250); });
+  const appEl = document.getElementById("app");
+  appEl.addEventListener("click", e => {
+    const t = e.target.closest("[data-evt],[data-pxmode],[data-pxrange],[data-pxclose]");
+    if (!t || !STATE.d) return;
+    if (t.dataset.evt) openPx("event", t.dataset.evt);
+    else if (t.dataset.pxmode) openPx("general");
+    else if (t.dataset.pxrange) { STATE.px.range = t.dataset.pxrange; renderPx(false); }
+    else if (t.dataset.pxclose) { STATE.px.open = false; renderPx(false); const tb = document.querySelector("#forecast .tbl tr.clk"); if (tb) tb.closest(".panel").scrollIntoView({ block: "nearest" }); }
+  });
+  appEl.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target.closest("[data-evt]"); if (!t || t.tagName === "BUTTON") return;
+    e.preventDefault(); openPx("event", t.dataset.evt);
+  });
+  document.getElementById("app").addEventListener("change", e => {
+    const t = e.target; if (!t.dataset || !t.dataset.sel || !STATE.d) return;
+    STATE.segSel[t.dataset.sel] = +t.value;
+    const y = window.scrollY; render(STATE.d); window.scrollTo(0, y);
+    const again = document.getElementById("sel-" + t.dataset.sel); if (again) again.focus();
+  });
+  load(store.get("lastTicker") || "AAPL");
+})();
+</script>
+</body>
+</html>
