@@ -337,6 +337,26 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .cin textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); line-height: 1.4; max-height: 160px; }
 .cin textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 
+/* full-year outlook */
+.fybar { position: relative; height: 34px; background: var(--sunk); border-radius: 6px; border: 1px solid var(--line); }
+.fyfill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 5px 0 0 5px; display: flex; align-items: center; padding-left: 10px; min-width: 0; overflow: hidden; }
+.fyfill span { color: #fff; font: 600 12.5px var(--f-mono); white-space: nowrap; }
+.fymark { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1.5px; background: var(--ink); border-radius: 2px; }
+.fyend { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 500 12.5px var(--f-mono); color: var(--muted); }
+.gform { display: grid; gap: 10px; }
+.gfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: 8px 10px; }
+.gfields label { display: grid; gap: 4px; font: 500 11px var(--f-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.gfields label.wide { grid-column: 1 / -1; }
+.gfields input, .gfields select { height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 0 10px; font: 14px var(--f-mono); color: var(--ink); text-transform: none; letter-spacing: 0; }
+.gbtns { display: flex; gap: 8px; }
+.panel.span2 { grid-column: 1 / -1; }
+ul.news { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+ul.news li { display: grid; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+ul.news li:last-child { border-bottom: 0; padding-bottom: 0; }
+ul.news a { color: var(--ink); text-decoration: none; font-weight: 500; }
+ul.news a:hover { color: var(--accent); text-decoration: underline; }
+ul.news span { font: 12px var(--f-mono); color: var(--muted); }
+
 .skel { height: 120px; border-radius: 6px; background: linear-gradient(90deg, var(--sunk), var(--surface), var(--sunk)); background-size: 200% 100%; animation: sh 1.4s infinite linear; }
 @keyframes sh { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
@@ -527,6 +547,7 @@ function buildInsights(d) {
   }
 
   forecastInsight(d.fc, cur, add);
+  fyOutlookInsight(d.fyo, cur, add);
 
   /* margins */
   if (Y && isNum(L.om) && isNum(Y.om)) {
@@ -794,7 +815,7 @@ async function load(symbol) {
     const d = { symbol, profile, inc: enrichIncome(asc(inc)), bs: asc(bs), cf: asc(cf), seg, geo, earnings, est, pt };
     d.bs.forEach(r => { normFY(r); r.label = qLabel(r); }); d.cf.forEach(r => { normFY(r); r.label = qLabel(r); });
     d.currency = d.inc[d.inc.length - 1].reportedCurrency || profile.currency || "USD";
-    STATE.segSel = {}; STATE.px = null;
+    STATE.segSel = {}; STATE.px = null; STATE.guideEdit = false;
     if (STATE.peerData && STATE.peerData.for !== symbol) STATE.peerData = null;
     d.fc = buildForecast(d);
     render(d);
@@ -809,6 +830,7 @@ let STATE = { insOpen: new Set(), incMode: "values", cmp: "qoq", segSel: {}, tab
 function render(d) {
   STATE.d = d;
   d.segL = segmentAnalysis(d.seg, MODE()); d.geoL = segmentAnalysis(d.geo, MODE());
+  d.fyo = buildFYOutlook(d);
   d.ins = buildInsights(d);
   const mode = MODE();
   const cur = d.currency, p = d.profile;
@@ -855,6 +877,8 @@ function render(d) {
   </section>
 
   ${forecastSection(d)}
+
+  ${fyOutlookSection(d)}
 
   <section class="sec" id="growth">
     <div class="sec-h"><div><span class="eyebrow">Income statement</span><h2>Revenue growth</h2><p>Quarterly revenue with ${mode === "qoq" ? "quarter-on-quarter" : "year-on-year"} growth above each bar. Use the Compare switch at the top to change this.</p></div></div>
@@ -913,6 +937,7 @@ function render(d) {
   if (STATE.tab === "peers") renderPeers();
   if (STATE.px && STATE.px.open) renderPx(false);
   if (STATE.chatOpen) renderChat();
+  wireGuidance(); loadGuidanceNews(d.symbol);
   const dr = document.querySelectorAll(".drivers details"), allBtn = document.getElementById("insAll");
   const syncAll = () => { if (allBtn) allBtn.textContent = [...dr].every(x => x.open) ? "Collapse all" : "Expand all"; };
   dr.forEach(x => x.addEventListener("toggle", () => { x.open ? STATE.insOpen.add(x.dataset.k) : STATE.insOpen.delete(x.dataset.k); syncAll(); }));
@@ -1541,6 +1566,174 @@ function openPx(mode, date) {
   renderPx(true);
 }
 
+/* ============ current fiscal year outlook ============ */
+const guideKey = sym => "guide:" + sym;
+const loadGuide = sym => { try { const g = JSON.parse(store.get(guideKey(sym)) || "null"); return g && typeof g === "object" ? g : null; } catch (e) { return null; } };
+const saveGuide = (sym, g) => store.set(guideKey(sym), g ? JSON.stringify(g) : "");
+const fyLab = fy => "FY" + String(fy).slice(-2);
+const remQ = n => `the remaining ${n === 1 ? "quarter needs" : n + " quarters need"}`;
+const qRange = rows => rows.length ? (rows.length === 1 ? rows[0].period : `${rows[0].period}–${rows[rows.length - 1].period}`) : "";
+
+function buildFYOutlook(d) {
+  const f = d.fc; if (!f) return null;
+  const q = d.inc, er = f.er || [], fy = +f.nx.fiscalYear, cons = (f.annual || [])[0] || null;
+  const qi = r => q.indexOf(r);
+  const rowFor = e => { const t = Date.parse(e.date); for (let i = q.length - 1; i >= 0; i--) { const t0 = Date.parse(q[i].date), t1 = i < q.length - 1 ? Date.parse(q[i + 1].date) : t0 + 110 * 864e5; if (t > t0 && t <= t1) return i; } return -1; };
+  const epsOf = r => { const e = er.find(x => isNum(x.epsActual) && rowFor(x) === qi(r)); return e ? e.epsActual : r.epsDiluted; };
+  const ytd = q.filter(r => r.fiscalYear === fy), prev = q.filter(r => r.fiscalYear === fy - 1);
+  const prevYtd = prev.filter(r => ytd.some(y => y.period === r.period));
+  const prevRest = prev.filter(r => !ytd.some(y => y.period === r.period));
+  const S = (rows, fn) => rows.length ? rows.reduce((t, r) => t + n0(fn(r)), 0) : null;
+  const o = {
+    fy, label: fyLab(fy), cons, left: 4 - ytd.length, ytdLabel: qRange(ytd), restLabel: qRange(prevRest.map(r => ({ period: r.period }))),
+    ytdRev: S(ytd, r => r.revenue), ytdEps: S(ytd, epsOf), prevYtdRev: S(prevYtd, r => r.revenue), prevYtdEps: S(prevYtd, epsOf),
+    prevFyRev: prev.length === 4 ? S(prev, r => r.revenue) : null, prevFyEps: prev.length === 4 ? S(prev, epsOf) : null,
+    prevRestRev: S(prevRest, r => r.revenue), prevRestEps: S(prevRest, epsOf), prevLabel: fyLab(fy - 1)
+  };
+  o.ytdRevG = growth(o.ytdRev, o.prevYtdRev); o.ytdEpsG = growth(o.ytdEps, o.prevYtdEps);
+  if (cons) {
+    o.consRevG = growth(cons.rev, o.prevFyRev); o.consEpsG = growth(cons.eps, o.prevFyEps);
+    o.needRev = isNum(cons.rev) ? cons.rev - n0(o.ytdRev) : null; o.needEps = isNum(cons.eps) ? cons.eps - n0(o.ytdEps) : null;
+    o.needRevG = growth(o.needRev, o.prevRestRev); o.needEpsG = growth(o.needEps, o.prevRestEps);
+    o.shareNow = ratio(o.ytdRev, cons.rev); o.shareLast = ratio(o.prevYtdRev, o.prevFyRev);
+  }
+  // what the next quarter's own consensus says, for comparison when one quarter is left
+  if (o.left === 1 && isNum(f.cRev)) o.nextQRev = f.cRev;
+  const g = loadGuide(d.symbol);
+  if (g) {
+    const lohi = (lo, hi) => { lo = isNum(lo) ? lo : hi; hi = isNum(hi) ? hi : lo; return isNum(lo) ? { lo, hi, mid: (lo + hi) / 2 } : null; };
+    o.guide = { ...g, rev: lohi(g.revLo, g.revHi), eps: lohi(g.epsLo, g.epsHi), om: lohi(g.omLo, g.omHi) };
+    const gr = o.guide.rev, ge = o.guide.eps;
+    if (gr) { gr.vsCons = cons ? growth(cons.rev, gr.mid) : null; gr.g = { lo: growth(gr.lo, o.prevFyRev), mid: growth(gr.mid, o.prevFyRev), hi: growth(gr.hi, o.prevFyRev) };
+      gr.need = { lo: growth(gr.lo - n0(o.ytdRev), o.prevRestRev), mid: growth(gr.mid - n0(o.ytdRev), o.prevRestRev), hi: growth(gr.hi - n0(o.ytdRev), o.prevRestRev) }; }
+    if (ge) { ge.vsCons = cons ? growth(cons.eps, ge.mid) : null; ge.g = { lo: growth(ge.lo, o.prevFyEps), mid: growth(ge.mid, o.prevFyEps), hi: growth(ge.hi, o.prevFyEps) }; }
+  }
+  return o;
+}
+
+function fyOutlookInsight(o, cur, add) {
+  if (!o || !o.cons || !isNum(o.cons.rev)) return;
+  let body = `${o.label} consensus revenue is <b>${money(o.cons.rev, cur)}</b> (${pct(o.consRevG)} vs ${o.prevLabel}).`;
+  if (o.left < 4 && isNum(o.needRev)) body += ` ${o.ytdLabel} delivered ${money(o.ytdRev, cur)} (${pct(o.ytdRevG)} YoY), so ${remQ(o.left)} ${money(o.needRev, cur)}, ${pct(o.needRevG)} vs the same period last year.`;
+  if (o.guide && o.guide.rev) body += ` Company guidance midpoint ${money(o.guide.rev.mid, cur)}; consensus is ${pct(o.guide.rev.vsCons)} vs that.`;
+  const slow = isNum(o.needRevG) && isNum(o.ytdRevG) && o.left < 4 ? o.needRevG - o.ytdRevG : null;
+  const title = o.left === 4 ? `${o.label} consensus: revenue ${pct(o.consRevG)}` : !isNum(slow) ? `${o.label} on track vs consensus` : Math.abs(slow) < 0.02 ? `${o.label} consensus assumes a steady pace` : slow < 0 ? `${o.label} consensus assumes growth slows` : `${o.label} consensus needs a faster finish`;
+  add(isNum(slow) && slow > 0.03 ? "neg" : "neu", `Full year · ${o.label}`, title, body);
+}
+
+function fyOutlookSection(d) {
+  const o = d.fyo, cur = d.currency; if (!o) return "";
+  const c = o.cons;
+  const stat = (lab, big, lines) => `<div class="fc"><span class="eyebrow">${lab}</span><span class="v">${big}</span>${lines.filter(Boolean).map(l => `<span class="foot">${l}</span>`).join("")}</div>`;
+  const cards = [
+    stat(`${o.label} consensus revenue`, money(c && c.rev, cur), [c ? `${pct(o.consRevG)} vs ${o.prevLabel} (${money(o.prevFyRev, cur)})` : "No full-year estimate in the data", c && isNum(c.revLo) ? `Range ${money(c.revLo, cur)} – ${money(c.revHi, cur)} · ${c.nRev ?? "—"} analysts` : ""]),
+    o.left < 4 ? stat(`Delivered so far · ${o.ytdLabel}`, money(o.ytdRev, cur), [`${pct(o.ytdRevG)} vs ${o.ytdLabel} ${o.prevLabel}`, isNum(o.shareNow) ? `${pctPlain(o.shareNow, 0)} of consensus (at this point last year: ${pctPlain(o.shareLast, 0)} of the full year)` : ""])
+      : stat("Delivered so far", "—", [`${o.label} hasn't started reporting yet`]),
+    stat(o.left < 4 ? `Needed in ${o.restLabel || "rest of year"} to hit consensus` : `${o.label} vs ${o.prevLabel}`, o.left < 4 ? money(o.needRev, cur) : pct(o.consRevG), [o.left < 4 ? `${pct(o.needRevG)} vs ${o.restLabel} ${o.prevLabel} (${money(o.prevRestRev, cur)})` : "Consensus growth for the full year",
+      isNum(o.nextQRev) ? `${esc(d.fc.label)} consensus on its own is ${money(o.nextQRev, cur)}${Math.abs(o.nextQRev - o.needRev) / Math.abs(o.needRev) > 0.01 ? ` (${o.nextQRev > o.needRev ? "above" : "below"} this by ${money(Math.abs(o.nextQRev - o.needRev), cur)}; the two estimate sets come from different analysts)` : ", consistent with the full-year figure"}` : ""]),
+    stat(`${o.label} consensus EPS`, c && isNum(c.eps) ? c.eps.toFixed(2) : "—", [c ? `${pct(o.consEpsG)} vs ${o.prevLabel}` : "", o.left < 4 && isNum(o.ytdEps) ? `${o.ytdLabel}: ${o.ytdEps.toFixed(2)} delivered, ${isNum(o.needEps) ? o.needEps.toFixed(2) : "—"} needed (${pct(o.needEpsG)} YoY)` : ""])
+  ].join("");
+
+  // progress bar: delivered vs consensus, with last year's share at this point marked
+  const bar = c && o.left < 4 && isNum(o.shareNow) ? `<div class="fybar"><div class="fyfill" style="width:${Math.min(100, o.shareNow * 100).toFixed(1)}%"><span>${o.ytdLabel} ${money(o.ytdRev, cur)}</span></div>
+      ${isNum(o.shareLast) ? `<i class="fymark" style="left:${Math.min(100, o.shareLast * 100).toFixed(1)}%" title="Share of the full year delivered at this point last year"></i>` : ""}<span class="fyend">${money(c.rev, cur)}</span></div>
+    <p class="note">The bar shows revenue delivered so far as a share of ${o.label} consensus. The black tick marks how much of ${o.prevLabel} had been delivered at the same point.${isNum(o.shareLast) ? ` The bar is ${o.shareNow >= o.shareLast ? "<b>past the tick</b>, so this year is pacing ahead of" : "<b>short of the tick</b>, so this year is pacing behind"} a normal seasonal year relative to consensus.` : ""}</p>` : "";
+
+  // company guidance
+  const g = o.guide, gu = (g && g.unit) || "B", U = gu === "M" ? 1e6 : 1e9;
+  const vin = (v, div) => isNum(v) ? +(v / div).toFixed(4) : "";
+  let gHtml;
+  if (STATE.guideEdit || !g) {
+    gHtml = STATE.guideEdit ? `<form class="gform" id="guideForm" autocomplete="off">
+        <div class="gfields">
+          <label>Revenue low<input id="gRevLo" inputmode="decimal" value="${g ? vin(g.revLo, U) : ""}" placeholder="e.g. 410"></label>
+          <label>Revenue high<input id="gRevHi" inputmode="decimal" value="${g ? vin(g.revHi, U) : ""}" placeholder="e.g. 420"></label>
+          <label>Units<select id="gUnit"><option value="B" ${gu === "B" ? "selected" : ""}>billions</option><option value="M" ${gu === "M" ? "selected" : ""}>millions</option></select></label>
+          <label>EPS low<input id="gEpsLo" inputmode="decimal" value="${g && isNum(g.epsLo) ? g.epsLo : ""}" placeholder="e.g. 8.10"></label>
+          <label>EPS high<input id="gEpsHi" inputmode="decimal" value="${g && isNum(g.epsHi) ? g.epsHi : ""}" placeholder="e.g. 8.30"></label>
+          <label>Op. margin low %<input id="gOmLo" inputmode="decimal" value="${g && isNum(g.omLo) ? +(g.omLo * 100).toFixed(2) : ""}" placeholder="e.g. 31"></label>
+          <label>Op. margin high %<input id="gOmHi" inputmode="decimal" value="${g && isNum(g.omHi) ? +(g.omHi * 100).toFixed(2) : ""}" placeholder="e.g. 32"></label>
+          <label class="wide">Source / note<input id="gNote" value="${esc(g ? g.note || "" : "")}" placeholder="e.g. Q3 FY26 results, 30 Jul 2026"></label>
+        </div>
+        <div class="gbtns"><button class="btn sm" type="submit">Save guidance</button><button class="btn ghost sm" type="button" data-g="cancel">Cancel</button></div>
+        <p class="note">Fill in whatever the company gave; one number is fine (low = high). Saved in this browser for ${esc(d.symbol)}.</p></form>`
+      : `<p class="note">FMP doesn't provide company guidance on your plan. If ${esc(d.symbol)} gave a ${o.label} outlook in its latest results, add it here and the tool will compare it with consensus and what's been delivered so far.</p>
+        <button class="btn ghost sm" type="button" data-g="edit">Add company guidance</button>`;
+  } else {
+    const r = g.rev, e = g.eps, m = g.om;
+    const rows = [];
+    if (r) rows.push(["Revenue", `${money(r.lo, cur)} – ${money(r.hi, cur)}`, money(r.mid, cur), `${pct(r.g.lo)} to ${pct(r.g.hi)}`, c ? money(c.rev, cur) : "—", isNum(r.vsCons) ? `<span class="${r.vsCons > 0.005 ? "up" : r.vsCons < -0.005 ? "dn" : ""}">${pct(r.vsCons)}</span>` : "—",
+      o.left < 4 ? `${pct(r.need.lo)} to ${pct(r.need.hi)}` : "—"]);
+    if (e) rows.push(["EPS", `${e.lo.toFixed(2)} – ${e.hi.toFixed(2)}`, e.mid.toFixed(2), `${pct(e.g.lo)} to ${pct(e.g.hi)}`, c && isNum(c.eps) ? c.eps.toFixed(2) : "—", isNum(e.vsCons) ? `<span class="${e.vsCons > 0.005 ? "up" : e.vsCons < -0.005 ? "dn" : ""}">${pct(e.vsCons)}</span>` : "—", "—"]);
+    if (m) rows.push(["Operating margin", `${pctPlain(m.lo)} – ${pctPlain(m.hi)}`, pctPlain(m.mid), "", "", "", ""]);
+    const verdict = r && isNum(r.vsCons) ? (Math.abs(r.vsCons) < 0.005 ? "Consensus sits <b>at the guidance midpoint</b>." : r.vsCons > 0 ? (c.rev > r.hi ? "Consensus is <b>above the top of guidance</b>: the Street expects a beat-and-raise." : "Consensus is <b>above the midpoint</b>, towards the top of the range.") : (c.rev < r.lo ? "Consensus is <b>below the bottom of guidance</b>: the Street doubts the outlook." : "Consensus is <b>below the midpoint</b>, towards the bottom of the range.")) : "";
+    gHtml = `${verdict ? `<p>${verdict}${o.left < 4 && r ? ` To land in the range, ${remQ(o.left)} ${pct(r.need.lo)} to ${pct(r.need.hi)} growth vs last year, against ${pct(o.ytdRevG)} delivered so far.` : ""}</p>` : ""}
+      <div class="tbl"><table><thead><tr><th>${o.label} guidance</th><th>Range</th><th>Midpoint</th><th>Growth vs ${o.prevLabel}</th><th>Consensus</th><th>Consensus vs mid</th><th>Rest of year needs</th></tr></thead>
+      <tbody>${rows.map(rw => `<tr>${rw.map(x => `<td>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+      <p class="note">Source: ${esc(g.note || "entered manually")}${g.saved ? ` · saved ${esc(fmtDate(g.saved))}` : ""}. <button type="button" class="more" data-g="edit">Edit</button> <button type="button" class="more" data-g="remove">Remove</button></p>`;
+  }
+
+  return `<section class="sec" id="fyo">
+    <div class="sec-h"><div><span class="eyebrow">Current financial year</span><h2>${o.label} outlook</h2>
+      <p>Full-year consensus against what's been delivered so far, and what the rest of the year needs. ${o.left < 4 ? `${o.left} quarter${o.left > 1 ? "s" : ""} left to report.` : `${o.label} reporting starts with ${esc(d.fc.label)}.`}</p></div></div>
+    <div class="fcards">${cards}</div>
+    ${bar}
+    <div class="grid2">
+      <div class="panel${g && !STATE.guideEdit ? " span2" : ""}"><h4>Company guidance</h4>${gHtml}</div>
+      <div class="panel"><h4>Guidance in the news <small>headlines from FMP · check the source</small></h4><div id="fyNews"><div class="skel" style="height:80px"></div></div></div>
+    </div>
+  </section>`;
+}
+
+async function loadGuidanceNews(sym) {
+  const box = document.getElementById("fyNews"); if (!box) return;
+  try {
+    const items = await api("news/stock", { symbols: sym, limit: 60 });
+    if (STATE.d.symbol !== sym) return;
+    const re = /(guidance|outlook|forecast|full[- ]year|fiscal (year|20\d\d)|raises|lowers|cuts|reaffirm|reiterat|sees .*(revenue|sales|eps))/i;
+    const hits = (Array.isArray(items) ? items : []).filter(n => n && n.title && re.test(n.title)).slice(0, 6);
+    const b2 = document.getElementById("fyNews"); if (!b2) return;
+    b2.innerHTML = hits.length ? `<ul class="news">${hits.map(n => `<li><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a><span>${esc(n.publisher || n.site || "")} · ${esc(fmtDate(String(n.publishedDate || "").slice(0, 10)))}</span></li>`).join("")}</ul>`
+      : `<p class="note">No recent headlines mentioning guidance or outlook for ${esc(sym)}.</p>`;
+  } catch (e) { const b2 = document.getElementById("fyNews"); if (b2) b2.innerHTML = `<p class="note">Couldn't load news: ${esc(e.message)}</p>`; }
+}
+
+function wireGuidance() {
+  const sec = document.getElementById("fyo"); if (!sec) return;
+  sec.addEventListener("click", e => {
+    const b = e.target.closest("[data-g]"); if (!b) return;
+    const sym = STATE.d.symbol;
+    if (b.dataset.g === "edit") STATE.guideEdit = true;
+    else if (b.dataset.g === "cancel") STATE.guideEdit = false;
+    else if (b.dataset.g === "remove") { saveGuide(sym, null); STATE.guideEdit = false; }
+    rerenderKeepScroll();
+  });
+  const form = document.getElementById("guideForm");
+  if (form) form.addEventListener("submit", e => {
+    e.preventDefault();
+    const num = id => { const v = document.getElementById(id).value.replace(/[, ]/g, "").replace(/^\$/, ""); return v === "" || isNaN(+v) ? null : +v; };
+    const U = document.getElementById("gUnit").value === "M" ? 1e6 : 1e9;
+    const sc = (v, k) => isNum(v) ? v * k : null;
+    const g = { unit: document.getElementById("gUnit").value, revLo: sc(num("gRevLo"), U), revHi: sc(num("gRevHi"), U), epsLo: num("gEpsLo"), epsHi: num("gEpsHi"),
+      omLo: sc(num("gOmLo"), 0.01), omHi: sc(num("gOmHi"), 0.01), note: document.getElementById("gNote").value.trim(), saved: todayISO() };
+    if (![g.revLo, g.revHi, g.epsLo, g.epsHi, g.omLo, g.omHi].some(isNum)) { STATE.guideEdit = false; rerenderKeepScroll(); return; }
+    saveGuide(STATE.d.symbol, g); STATE.guideEdit = false; rerenderKeepScroll();
+  });
+}
+function rerenderKeepScroll() { const y = window.scrollY; render(STATE.d); window.scrollTo(0, y); }
+
+function ansGuidance(d) {
+  const o = d.fyo, cur = d.currency;
+  if (!o || !o.cons) return { html: `<p>No full-year estimates are available for ${esc(d.symbol)}.</p>` };
+  const lines = [
+    o.left < 4 ? `${esc(o.ytdLabel)} delivered ${money(o.ytdRev, cur)} (${pct(o.ytdRevG)} YoY), ${pctPlain(o.shareNow, 0)} of consensus vs ${pctPlain(o.shareLast, 0)} at this point last year.` : "",
+    o.left < 4 && isNum(o.needRev) ? `${remQ(o.left).replace(/^t/, "T")} ${money(o.needRev, cur)}, ${pct(o.needRevG)} vs last year${isNum(o.ytdRevG) ? ` (${o.needRevG < o.ytdRevG ? "a slowdown from" : "faster than"} ${pct(o.ytdRevG)} so far)` : ""}.` : "",
+    isNum(o.cons.eps) ? `${o.label} consensus EPS ${o.cons.eps.toFixed(2)} (${pct(o.consEpsG)} YoY)${o.left < 4 && isNum(o.needEps) ? `; ${o.needEps.toFixed(2)} still needed` : ""}.` : "",
+    o.guide && o.guide.rev ? `Company guidance ${money(o.guide.rev.lo, cur)}–${money(o.guide.rev.hi, cur)}; consensus is ${pct(o.guide.rev.vsCons)} vs the midpoint.` : `No company guidance saved. FMP doesn't carry it on your plan; add it in the ${o.label} outlook section.`
+  ];
+  return { html: `<p><b>${o.label} consensus revenue ${money(o.cons.rev, cur)}</b>, ${pct(o.consRevG)} vs ${o.prevLabel}.</p>` + ul(lines) };
+}
+
 /* ============ peers ============ */
 async function suggestedPeers(sym) {
   const raw = await api("stock-peers", { symbol: sym }).catch(() => []);
@@ -1863,6 +2056,8 @@ function buildChatContext() {
     autoInsightsShownOnScreen: { headline: d.ins.verdict, cards: d.ins.list.map(i => ({ topic: i.tag, title: i.title, text: strip(i.body) })) },
     quarterlyIncome: q, balanceSheet: b, cashFlow: c,
     segmentsByProduct: segContext(d.seg), segmentsByRegion: segContext(d.geo), forecast: fc,
+    currentFiscalYear: d.fyo ? { year: d.fyo.label, quartersLeft: d.fyo.left, deliveredQuarters: d.fyo.ytdLabel, ytdRevenue: r4(d.fyo.ytdRev), ytdRevGrowth_pct: pctN(d.fyo.ytdRevG), consensusRevenue: r4(d.fyo.cons && d.fyo.cons.rev), consensusRevGrowth_pct: pctN(d.fyo.consRevG), neededRestOfYearRevenue: r4(d.fyo.needRev), neededRestOfYearGrowth_pct: pctN(d.fyo.needRevG), consensusEPS: r4(d.fyo.cons && d.fyo.cons.eps), ytdEPS: r4(d.fyo.ytdEps),
+      companyGuidance: d.fyo.guide ? { revenueLow: r4(d.fyo.guide.revLo), revenueHigh: r4(d.fyo.guide.revHi), epsLow: d.fyo.guide.epsLo, epsHigh: d.fyo.guide.epsHi, opMarginLow_pct: pctN(d.fyo.guide.omLo), opMarginHigh_pct: pctN(d.fyo.guide.omHi), source: d.fyo.guide.note } : "not provided (FMP plan has no guidance data)" } : null,
     peers: pd ? { note: "Peer medians exclude the main company. Valuation multiples are TTM.", main: compactPeer(pd.me), peers: pd.peers.map(compactPeer), loadErrors: pd.errs } : "not loaded"
   };
 }
@@ -2057,7 +2252,7 @@ function chatSuggestions() {
   const m = MODE() === "qoq" ? "QoQ" : "YoY", nx = d.fc ? d.fc.label : "next quarter";
   return [[`What's driving growth?`, `What's driving ${m} revenue growth right now?`], [`Cheap vs peers?`, `Is ${d.symbol} cheap or expensive vs peers, and is it justified?`], [`What to watch into ${nx}`, `What should I watch into the ${nx} print?`],
     [`Reaction to last 4 prints`, `How did the stock react to the last 4 earnings reports?`], [`Margins vs peers`, `Chart operating margin vs peers`], [`Margin outlook`, `Where are margins heading and why?`],
-    [`Balance sheet`, `Summarise the balance sheet and debt`], [`Cash flow & buybacks`, `Free cash flow and buybacks`]];
+    [`Balance sheet`, `Summarise the balance sheet and debt`], [`Full-year outlook`, `How is the full year tracking vs consensus and guidance?`]];
 }
 
 function renderChatTurn(t) {
@@ -2139,8 +2334,9 @@ const NOT_TICKERS = new Set(["I", "A", "AN", "THE", "QOQ", "YOY", "EPS", "FCF", 
 const INTENTS = [
   ["reaction", /(react|reaction|traded|trade around|share price|stock (move|do|did|react)|price (move|action|reaction)|sold off|sell[- ]?off|rall(y|ied)|how did (the )?(stock|shares))/],
   ["valuation", /(valu|cheap|expensive|multiple|p\/e|\bpe\b|ev\/|premium|discount|\brich\b|overvalued|undervalued|price target|upside|downside|re-?rate)/],
-  ["earnings", /(earnings|estimate|consensus|beat|miss|next quarter|print|forecast|expect|guidance|watch|upcoming|results day|report)/],
-  ["peers", /(peer|compet|compare|versus|\bvs\.?\b|relative|against|rank|sector)/],
+  ["guidance", /(guidance|\bguide[ds]?\b|outlook|full[- ]year|this year|current year|fiscal year|\bfy\d*\b|annual target)/],
+  ["earnings", /(earnings|estimate|consensus|beat|miss|next quarter|print|forecast|expect|watch|upcoming|results day|report)/],
+  ["peers", /(peer|compet|compare|relative to|rank|sector)/],
   ["margins", /(margin|profitab|cost|opex|expense|operating leverage|gross profit|operating income)/],
   ["growth", /(grow|driv|revenue|sales|top ?line|segment|business unit|product|region|geograph|where .*(grow|com))/],
   ["balance", /(balance sheet|debt|net cash|cash position|liquidity|leverage|inventory|receivable|working capital|solven)/],
@@ -2152,7 +2348,7 @@ const INTENTS = [
 function detectIntents(q) {
   const s = q.toLowerCase(), hits = INTENTS.filter(([, re]) => re.test(s)).map(([k]) => k);
   let out = hits;
-  if (out.includes("reaction")) out = out.filter(k => k !== "earnings");
+  if (out.includes("reaction") || out.includes("guidance")) out = out.filter(k => k !== "earnings");
   if (out.includes("valuation") && out.includes("peers")) out = out.filter(k => k !== "peers");
   if (out.includes("peers") && (out.includes("margins") || out.includes("growth"))) out = out.filter(k => k !== "margins" && k !== "growth");
   return out.slice(0, 2);
@@ -2389,7 +2585,7 @@ function ansSummary(d) {
 async function answerLocal(q, turn) {
   const d = STATE.d, m = detectMode(q), extra = detectTickers(q, d);
   let intents = detectIntents(q);
-  if (!intents.length && extra.length) intents = ["peers"];
+  if (extra.length && !intents.includes("peers") && !intents.includes("valuation")) intents = ["peers", ...intents].slice(0, 2);
   if (!intents.length && CHAT.lastIntent && q.trim().split(/\s+/).length <= 6) intents = [CHAT.lastIntent];
   if (!intents.length) intents = ["summary"];
   CHAT.lastIntent = intents[0];
@@ -2407,6 +2603,7 @@ async function answerLocal(q, turn) {
     else if (it === "balance") parts.push(ansBalance(d));
     else if (it === "cash") parts.push(ansCash(d));
     else if (it === "eps") parts.push(ansEps(d, m));
+    else if (it === "guidance") parts.push(ansGuidance(d));
     else parts.push(ansSummary(d));
   }
   turn.html = parts.map(p => p.html).join('<hr class="sep">');
