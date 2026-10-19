@@ -786,7 +786,7 @@ async function load(symbol) {
     if (!inc.length) throw new ApiError(`No financial statements found for ${symbol}. Check the ticker, or use the search to pick the listing.`, 404);
     const [seg, geo, earnings, est, pt] = await Promise.all([
       loadSegments("revenue-product-segmentation", symbol), loadSegments("revenue-geographic-segmentation", symbol),
-      api("earnings", { symbol, limit: 12 }).catch(() => []),
+      api("earnings", { symbol, limit: 16 }).catch(() => []),
       api("analyst-estimates", { symbol, period: "annual", limit: 10 }).catch(() => []),
       api("price-target-consensus", { symbol }).then(x => x[0] || null).catch(() => null)
     ]);
@@ -1165,7 +1165,7 @@ function buildForecast(d) {
   const past = er.filter(hasAct).slice(-8).map(e => ({ ...e, rowIdx: rowFor(e), revS: growth(e.revenueActual, e.revenueEstimated), epsS: growth(e.epsActual, e.epsEstimated) }));
   const rate = k => { const v = past.map(e => e[k]).filter(isNum); return v.length ? { beats: v.filter(x => x > 0).length, n: v.length, avg: mean(v) } : null; };
 
-  const f = { label, nx, L, P, ya, up, past, revTrack: rate("revS"), epsTrack: rate("epsS") };
+  const f = { label, nx, L, P, ya, up, past, er, revTrack: rate("revS"), epsTrack: rate("epsS") };
   // match each reported quarter with the estimate made for it (report date within ~4 months after quarter end)
   const used = new Set();
   f.hist = q.slice(-6).map(r => {
@@ -1293,7 +1293,7 @@ function forecastSection(d) {
   const epsModel = labels.map((_, i) => i === estFrom && isNum(f.mEps) && !ups[0].modelOnly ? f.mEps : null);
   const epsTxt = [...f.hist.map(h => surpriseTxt(h.epsS, h.estEps, v => v.toFixed(2))), ...ups.map(u => { const t = expTxt(u.epsEstimated, baseE, yaFor(u, "epsDiluted"), x => x.toFixed(2)); baseE = u.epsEstimated; return t; })];
 
-  const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Upcoming quarter (consensus, not yet reported)", color: "var(--accent-soft)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
+  const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
   const trackTxt = t => t ? `beat ${t.beats} of ${t.n}` : "";
   const chart = `<div class="panel"><h4>Revenue: actual vs expectations <small>${esc(trackTxt(f.chartTrack.rev))} · click a quarter for its price chart</small></h4>${lg(revModel.some(isNum))}
       <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
@@ -1316,23 +1316,32 @@ function forecastSection(d) {
 
   // beat history
   const gW = mode === "qoq" ? "QoQ" : "YoY";
-  const yaRev = lab => { const m = /Q(\d) FY(\d\d)/.exec(lab); if (!m) return null; const r = d.inc.find(x => x.period === "Q" + m[1] && String(x.fiscalYear).slice(-2) === String(+m[2] - 1).padStart(2, "0")); return r ? r.revenue : null; };
-  let upBase = f.L.revenue;
-  const upCalc = f.ups.map(u => { const base = mode === "qoq" ? upBase : yaRev(u.label); const g = growth(u.revenueEstimated, base); if (isNum(u.revenueEstimated)) upBase = u.revenueEstimated; return { ...u, estG: g }; });
-  const gcell = v => `<td class="${cls(v)}">${pct(v)}</td>`;
-  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td><td></td><td>upcoming</td><td></td><td></td>
-      <td>${isNum(u.epsEstimated) ? u.epsEstimated.toFixed(2) : "—"}</td><td>upcoming</td><td></td></tr>`).reverse().join("");
-  const pastRows = [...f.past].reverse().map(e => {
-    const i = e.rowIdx, bi = i >= 0 ? (mode === "qoq" ? i - 1 : yearAgoIdx(d.inc, i)) : -1;
-    const base = bi >= 0 && bi !== i ? d.inc[bi].revenue : null;
-    const lab = i >= 0 ? d.inc[i].label + " · " : "";
-    return `<tr class="clk" data-evt="${esc(e.date)}" tabindex="0" title="Show the price chart ±30 days around this report"><td>${esc(lab + fmtDate(e.date))} <span class="go">↗</span></td><td>${money(e.revenueEstimated, cur)}</td>${gcell(growth(e.revenueEstimated, base))}<td>${money(e.revenueActual, cur)}</td>${gcell(growth(e.revenueActual, base))}<td class="${cls(e.revS)}"><b>${pct(e.revS)}</b></td>
-      <td>${isNum(e.epsEstimated) ? e.epsEstimated.toFixed(2) : "—"}</td><td>${isNum(e.epsActual) ? e.epsActual.toFixed(2) : "—"}</td><td class="${cls(e.epsS)}">${pct(e.epsS)}</td></tr>`;
-  }).join("");
+  // simple row-to-row % changes from the table's own figures: estimate vs previous estimate, actual vs previous actual
+  // (QoQ = the report before; YoY = the report four before, i.e. the same quarter last year)
+  const ers = f.er.filter(e => isNum(e.revenueEstimated) || isNum(e.revenueActual) || isNum(e.epsEstimated) || isNum(e.epsActual));
+  const back = mode === "qoq" ? 1 : 4;
+  const shown = new Set([...f.past.map(e => e.date), ...f.ups.map(u => u.date)]);
+  const labelOf = e => { const pe = f.past.find(x => x.date === e.date); if (pe && pe.rowIdx >= 0) return d.inc[pe.rowIdx].label; const u = f.ups.find(x => x.date === e.date); return u ? u.label : ""; };
+  const gcell = (v, neutral) => `<td class="${neutral ? "" : cls(v)}">${pct(v)}</td>`;
+  const eps2 = v => isNum(v) ? v.toFixed(2) : "—";
+  const rowsHtml = ers.map((e, k) => {
+    if (!shown.has(e.date)) return "";
+    const pr = k - back >= 0 ? ers[k - back] : null;
+    const up = !(isNum(e.revenueActual) || isNum(e.epsActual));
+    const revS = growth(e.revenueActual, e.revenueEstimated), epsS = growth(e.epsActual, e.epsEstimated);
+    const lab = labelOf(e);
+    return `<tr class="clk${up ? " me" : ""}" data-evt="${esc(e.date)}" tabindex="0" title="Show the price chart ±30 days around this report"><td>${esc((lab ? lab + " · " : "") + fmtDate(e.date))} <span class="go">↗</span></td>
+      <td>${money(e.revenueEstimated, cur)}</td>${gcell(pr ? growth(e.revenueEstimated, pr.revenueEstimated) : null, up)}
+      <td>${up ? "upcoming" : money(e.revenueActual, cur)}</td>${up ? "<td></td>" : gcell(pr ? growth(e.revenueActual, pr.revenueActual) : null)}
+      <td class="${cls(revS)}">${up ? "" : `<b>${pct(revS)}</b>`}</td>
+      <td>${eps2(e.epsEstimated)}</td>${gcell(pr ? growth(e.epsEstimated, pr.epsEstimated) : null, up)}
+      <td>${up ? "upcoming" : eps2(e.epsActual)}</td>${up ? "<td></td>" : gcell(pr ? growth(e.epsActual, pr.epsActual) : null)}
+      <td class="${cls(epsS)}">${up ? "" : pct(epsS)}</td></tr>`;
+  }).filter(Boolean).reverse().join("");
   const ph = f.past.length || f.ups.length ? `<div class="tbl"><table><thead>
-    <tr class="gh"><th></th><th colspan="5">Revenue</th><th colspan="3">EPS</th></tr>
-    <tr><th>Quarter · report date</th><th>Estimate</th><th>Est. growth ${gW}</th><th>Actual</th><th>Actual growth ${gW}</th><th>Surprise</th><th>Estimate</th><th>Actual</th><th>Surprise</th></tr></thead><tbody>
-    ${upRows}${pastRows}
+    <tr class="gh"><th></th><th colspan="5">Revenue</th><th colspan="5">EPS</th></tr>
+    <tr><th>Quarter · report date</th><th>Estimate</th><th>Est. ${gW}</th><th>Actual</th><th>Actual ${gW}</th><th>Surprise</th><th>Estimate</th><th>Est. ${gW}</th><th>Actual</th><th>Actual ${gW}</th><th>Surprise</th></tr></thead><tbody>
+    ${rowsHtml}
   </tbody></table></div>` : "";
 
   // segment projection
@@ -1348,7 +1357,7 @@ function forecastSection(d) {
     <div class="fcards">${cards}</div>
     <div class="grid2">${chart}${epsChart}</div>
     ${ph ? `<div class="panel"><h4><span>Estimates vs actuals</span><button type="button" class="btn ghost sm" data-pxmode="general">Price chart</button></h4>
-      <p class="note">Click a row to see how the stock traded ±30 days around that report. Growth is ${mode === "qoq" ? "vs the previous quarter" : "vs the same quarter last year"}; change it with the Compare switch.</p>${ph}</div>` : ""}
+      <p class="note">Click a row to see how the stock traded ±30 days around that report. Est. and Actual ${mode === "qoq" ? "QoQ compare each figure with the row below it (the previous quarter)" : "YoY compare each figure with the same quarter a year earlier"}, estimate with estimate and actual with actual. Switch with the Compare control at the top.</p>${ph}</div>` : ""}
     <div class="panel pxpanel" id="pxPanel" hidden></div>
     <div class="grid2">${annual}<div class="panel"><h4>How the model works</h4>${method}</div></div>
     ${sp}
