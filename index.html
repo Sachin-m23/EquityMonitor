@@ -120,6 +120,8 @@ details.ins > p { padding: 0 14px 14px; }
 .chip { font: 500 12px/1 var(--f-mono); padding: 3px 6px; border-radius: 3px; white-space: nowrap; }
 .up { color: var(--pos); } .dn { color: var(--neg); }
 .chip.up { background: var(--pos-soft); } .chip.dn { background: var(--neg-soft); }
+.imptag { font-size: 10.5px; color: var(--muted); }
+.chip.imp { background: var(--sunk); color: var(--ink); border: 1px dashed var(--muted); }
 
 /* panels */
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 16px; }
@@ -424,7 +426,9 @@ const qLabel = r => r.period === "FY" ? "FY" + String(r.fiscalYear).slice(-2) : 
 const n0 = v => isNum(v) ? v : 0;
 
 /* attach derived fields to each income-statement row (ascending order) */
+const normFY = r => { if (r && r.fiscalYear != null && r.fiscalYear !== "") r.fiscalYear = +r.fiscalYear; return r; };
 function enrichIncome(rows) {
+  rows.forEach(normFY);
   rows.forEach((r, i) => {
     r.label = qLabel(r);
     r.gm = ratio(r.grossProfit, r.revenue);
@@ -453,7 +457,7 @@ function yearAgoIdx(rows, i) {
 function normSegments(raw, mode) {
   if (!Array.isArray(raw) || !raw.length) return null;
   const rows = raw.filter(r => r && r.data && typeof r.data === "object")
-    .map(r => ({ date: r.date, fiscalYear: r.fiscalYear, period: r.period || "FY", data: r.data, label: qLabel({ period: r.period || "FY", fiscalYear: r.fiscalYear }) }))
+    .map(r => ({ date: r.date, fiscalYear: +r.fiscalYear, period: r.period || "FY", data: r.data, label: qLabel({ period: r.period || "FY", fiscalYear: +r.fiscalYear }) }))
     .sort((a, b) => a.date < b.date ? -1 : 1);
   if (!rows.length) return null;
   const keep = rows.slice(-(mode === "quarter" ? SHOW_Q + 4 : 6));
@@ -699,7 +703,7 @@ function barChart(labels, series, opts = {}) {
       const top = stacked ? Y(series.reduce((t, s) => t + Math.max(0, n0(s.values[i])), 0)) : Y(Math.max(...series.map(s => n0(s.values[i])), opts.marks && isNum(opts.marks[i]) ? opts.marks[i] : -Infinity, opts.marks2 && isNum(opts.marks2[i]) ? opts.marks2[i] : -Infinity));
       if (hasTxt) {
         const lines = [].concat(opts.annotText[i]);
-        lines.forEach((ln, k) => { g += `<text x="${x + w / 2}" y="${top - 6 - (lines.length - 1 - k) * 12}" text-anchor="middle" style="fill:var(${ln.tone === "pos" ? "--pos" : ln.tone === "neg" ? "--neg" : "--muted"});font-weight:${ln.bold ? 600 : 500};font-size:9.8px">${esc(ln.t)}</text>`; });
+        lines.forEach((ln, k) => { g += `<text x="${x + w / 2}" y="${top - 6 - (lines.length - 1 - k) * 12}" text-anchor="middle" style="fill:var(${ln.tone === "pos" ? "--pos" : ln.tone === "neg" ? "--neg" : ln.tone === "ink" ? "--ink" : "--muted"});font-weight:${ln.bold ? 600 : 500};font-size:9.8px">${esc(ln.t)}</text>`; });
       } else g += `<text x="${x + w / 2}" y="${top - 5}" text-anchor="middle" style="fill:var(${opts.annot[i] >= 0 ? "--pos" : "--neg"});font-weight:500">${pct(opts.annot[i], 0)}</text>`;
     }
     g += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle">${esc(lab)}</text>`;
@@ -788,7 +792,7 @@ async function load(symbol) {
     ]);
     const asc = a => [...a].sort((x, y) => x.date < y.date ? -1 : 1);
     const d = { symbol, profile, inc: enrichIncome(asc(inc)), bs: asc(bs), cf: asc(cf), seg, geo, earnings, est, pt };
-    d.bs.forEach(r => r.label = qLabel(r)); d.cf.forEach(r => r.label = qLabel(r));
+    d.bs.forEach(r => { normFY(r); r.label = qLabel(r); }); d.cf.forEach(r => { normFY(r); r.label = qLabel(r); });
     d.currency = d.inc[d.inc.length - 1].reportedCurrency || profile.currency || "USD";
     STATE.segSel = {}; STATE.px = null;
     if (STATE.peerData && STATE.peerData.for !== symbol) STATE.peerData = null;
@@ -1139,9 +1143,10 @@ function cfSection(d, cur) {
 
 /* ============ forecast ============ */
 function nextQuarter(L) {
-  if (L.period === "Q4") return { period: "Q1", fiscalYear: L.fiscalYear + 1 };
+  const fy = +L.fiscalYear;
+  if (L.period === "Q4") return { period: "Q1", fiscalYear: fy + 1 };
   const k = +String(L.period).replace(/\D/g, "") || 0;
-  return { period: "Q" + (k + 1), fiscalYear: L.fiscalYear };
+  return { period: "Q" + (k + 1), fiscalYear: fy };
 }
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtDate = s => { if (!s) return "—"; const d = new Date(s + "T12:00:00Z"); return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
@@ -1254,10 +1259,12 @@ function forecastSection(d) {
   if (!f) return "";
   const mode = MODE();
   const card = (eyebrow, big, rows, foot) => `<div class="fc"><span class="eyebrow">${eyebrow}</span><span class="v">${big}</span>${rows ? `<span class="d">${rows}</span>` : ""}${foot ? `<span class="foot">${foot}</span>` : ""}</div>`;
-  const chips = (qq, yy) => `<span>QoQ ${chip(qq)}</span><span>YoY ${chip(yy)}</span>`;
+  // estimates are expectations, not results: show implied changes in neutral chips
+  const ichip = v => `<span class="chip imp">${pct(v)}</span>`;
+  const chips = (qq, yy) => `<span>Implied QoQ ${ichip(qq)}</span><span>YoY ${ichip(yy)}</span>`;
   const cards = [
-    card(`Consensus revenue · ${esc(f.label)}`, money(f.cRev, cur), isNum(f.cRev) ? chips(f.cRevQoQ, f.cRevYoY) : "", isNum(f.cRev) ? (isNum(f.L.revYoY) && isNum(f.cRevYoY) ? `Last quarter grew ${pct(f.L.revYoY)} YoY` : "") : "No estimate in the data"),
-    card("Consensus EPS", isNum(f.cEps) ? f.cEps.toFixed(2) : "—", isNum(f.cEps) ? chips(f.cEpsQoQ, f.cEpsYoY) : "", isNum(f.cEps) ? "Compared with EPS as reported against estimates" : ""),
+    card(`Consensus revenue · ${esc(f.label)}`, money(f.cRev, cur), isNum(f.cRev) ? chips(f.cRevQoQ, f.cRevYoY) : "", isNum(f.cRev) ? `vs ${esc(f.L.label)} actual of ${money(f.L.revenue, d.currency)}${isNum(f.L.revYoY) ? `, which grew ${pct(f.L.revYoY)} YoY` : ""}` : "No estimate in the data"),
+    card("Consensus EPS", isNum(f.cEps) ? f.cEps.toFixed(2) : "—", isNum(f.cEps) ? chips(f.cEpsQoQ, f.cEpsYoY) : "", isNum(f.cEps) ? `vs ${esc(f.L.label)} actual of ${f.hist.length && isNum(f.hist[f.hist.length - 1].eps) ? f.hist[f.hist.length - 1].eps.toFixed(2) : "—"} (EPS as reported against estimates)` : ""),
     card("Model revenue", money(f.mRev, cur), isNum(f.mRev) ? chips(f.mRevQoQ, f.mRevYoY) : "", isNum(f.modelVsCons) ? `${pct(f.modelVsCons)} vs consensus` : "Needs a year of history"),
     card("Track record", f.revTrack ? `${f.revTrack.beats}/${f.revTrack.n}` : "—", f.revTrack ? `<span>Revenue beats · avg ${chip(f.revTrack.avg)}</span>` : "", f.epsTrack ? `EPS beat ${f.epsTrack.beats} of ${f.epsTrack.n}, avg surprise ${pct(f.epsTrack.avg)}` : "")
   ].join("");
@@ -1270,7 +1277,7 @@ function forecastSection(d) {
   const fills = labels.map((_, i) => i >= estFrom ? "var(--accent-soft)" : "var(--accent)");
   const surpriseTxt = (s2, est, fmtE) => isNum(s2) ? [{ t: `${s2 >= 0 ? "Beat" : "Miss"} ${pct(s2, 1)}`, tone: s2 >= 0 ? "pos" : "neg", bold: true }, { t: `est ${fmtE(est)}` }] : null;
   const prevRev = f.L.revenue, prevEps = f.hist.length ? f.hist[f.hist.length - 1].eps : null;
-  const expTxt = (v, base, yaBase, fmtV) => { if (!isNum(v)) return null; const g2 = mode === "qoq" ? growth(v, base) : growth(v, yaBase); return [{ t: "Exp " + fmtV(v), bold: true }, { t: `${pct(g2, 1)} ${mode === "qoq" ? "QoQ" : "YoY"}`, tone: isNum(g2) ? (g2 >= 0 ? "pos" : "neg") : "" }]; };
+  const expTxt = (v, base, yaBase, fmtV) => { if (!isNum(v)) return null; const g2 = mode === "qoq" ? growth(v, base) : growth(v, yaBase); return [{ t: "Exp " + fmtV(v), bold: true, tone: "ink" }, { t: isNum(g2) ? `${pct(g2, 1)} ${mode === "qoq" ? "QoQ" : "YoY"}` : "" }, { t: isNum(g2) ? "(implied)" : "" }]; };
   const yaFor = (u, k) => { const m0 = /Q(\d) FY(\d\d)/.exec(u.label); if (m0 && k === "epsDiluted") { const h = f.hist.find(x => x.label === `Q${m0[1]} FY${String(+m0[2] - 1).padStart(2, "0")}`); if (h && isNum(h.eps)) return h.eps; } const q2 = d.inc; const m = /Q(\d) FY(\d\d)/.exec(u.label); if (!m) return null; const r = q2.find(x => x.period === "Q" + m[1] && String(x.fiscalYear).slice(-2) === String(+m[2] - 1).padStart(2, "0")); return r ? r[k] : null; };
 
   // revenue
@@ -1286,12 +1293,12 @@ function forecastSection(d) {
   const epsModel = labels.map((_, i) => i === estFrom && isNum(f.mEps) && !ups[0].modelOnly ? f.mEps : null);
   const epsTxt = [...f.hist.map(h => surpriseTxt(h.epsS, h.estEps, v => v.toFixed(2))), ...ups.map(u => { const t = expTxt(u.epsEstimated, baseE, yaFor(u, "epsDiluted"), x => x.toFixed(2)); baseE = u.epsEstimated; return t; })];
 
-  const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Consensus for upcoming quarter", color: "var(--accent-soft)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
+  const lg = (hasModel) => legend([{ name: "Reported", color: "var(--accent)" }, { name: "Upcoming quarter (consensus, not yet reported)", color: "var(--accent-soft)" }, { name: "Consensus at the time (dashed line)", color: "var(--ink)" }].concat(hasModel ? [{ name: "Model (dotted)", color: "var(--c2)" }] : []));
   const trackTxt = t => t ? `beat ${t.beats} of ${t.n}` : "";
   const chart = `<div class="panel"><h4>Revenue: actual vs expectations <small>${esc(trackTxt(f.chartTrack.rev))} · click a quarter for its price chart</small></h4>${lg(revModel.some(isNum))}
-      <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
+      <div class="chart">${barChart(labels, [{ name: "Revenue", color: "var(--accent)", values: revVals }], { clickKeys, annotText: revTxt, fills, marks: revMarks, markName: "Consensus", marks2: revModel, mark2Name: "Model", estFrom, topPad: 26, fmt: v => money(v, cur), title: "Revenue actual vs expectations" })}</div></div>`;
   const epsChart = `<div class="panel"><h4>EPS: actual vs expectations <small>${esc(trackTxt(f.chartTrack.eps))}</small></h4>${lg(epsModel.some(isNum))}
-      <div class="chart">${barChart(labels, [{ name: "EPS", color: "var(--accent)", values: epsVals }], { clickKeys, annotText: epsTxt, fills, marks: epsMarks, markName: "Consensus", marks2: epsModel, mark2Name: "Model", estFrom, topPad: 14, fmt: v => v.toFixed(2), title: "EPS actual vs expectations" })}</div></div>`;
+      <div class="chart">${barChart(labels, [{ name: "EPS", color: "var(--accent)", values: epsVals }], { clickKeys, annotText: epsTxt, fills, marks: epsMarks, markName: "Consensus", marks2: epsModel, mark2Name: "Model", estFrom, topPad: 26, fmt: v => v.toFixed(2), title: "EPS actual vs expectations" })}</div></div>`;
 
   // annual + target
   const an = f.annual && f.annual.length ? `<div class="tbl"><table><thead><tr><th>Consensus</th>${f.annual.map(a => `<th>${esc(a.label)}</th>`).join("")}</tr></thead><tbody>
@@ -1313,7 +1320,7 @@ function forecastSection(d) {
   let upBase = f.L.revenue;
   const upCalc = f.ups.map(u => { const base = mode === "qoq" ? upBase : yaRev(u.label); const g = growth(u.revenueEstimated, base); if (isNum(u.revenueEstimated)) upBase = u.revenueEstimated; return { ...u, estG: g }; });
   const gcell = v => `<td class="${cls(v)}">${pct(v)}</td>`;
-  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td>${gcell(u.estG)}<td>upcoming</td><td></td><td></td>
+  const upRows = upCalc.map(u => `<tr class="me clk" data-evt="${esc(u.date)}" tabindex="0" title="Show the price chart around this report"><td>${esc(u.label)} · ${esc(fmtDate(u.date))}</td><td>${money(u.revenueEstimated, cur)}</td><td>${pct(u.estG)} <span class="imptag">implied</span></td><td>upcoming</td><td></td><td></td>
       <td>${isNum(u.epsEstimated) ? u.epsEstimated.toFixed(2) : "—"}</td><td>upcoming</td><td></td></tr>`).reverse().join("");
   const pastRows = [...f.past].reverse().map(e => {
     const i = e.rowIdx, bi = i >= 0 ? (mode === "qoq" ? i - 1 : yearAgoIdx(d.inc, i)) : -1;
