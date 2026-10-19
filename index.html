@@ -260,6 +260,57 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .pxchip:hover { border-color: var(--accent); }
 .pxchip .dot { margin: 0 2px 0 4px; }
 
+/* chat */
+.chatfab { position: fixed; z-index: 40; right: calc(20px + env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 20px 0 16px; border-radius: 23px; border: 0; cursor: pointer;
+  background: var(--ink); color: var(--bg); font: 600 15px/1 var(--f-display); box-shadow: 0 8px 24px rgb(0 0 0 / .22); }
+.chatfab:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.chatfab .spark { width: 10px; height: 10px; background: var(--accent); transform: rotate(45deg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.chatpane { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; width: min(460px, 100vw); display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgb(0 0 0 / .14);
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@media (min-width: 1500px) { body.chat-open .wrap { margin-right: 460px; max-width: calc(100vw - 460px); } }
+.chead { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.chead > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.chead b { font: 600 14px/1.3 var(--f-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbtns { display: flex; gap: 6px; flex-shrink: 0; }
+.cset { display: grid; gap: 6px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--sunk); }
+.cset label { font: 500 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.cset input, .cset select { height: 36px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 0 10px; font-family: var(--f-mono); font-size: 13px; }
+.cset .btn { justify-self: start; height: 34px; }
+.clog { flex: 1; overflow-y: auto; padding: 16px; display: grid; gap: 16px; align-content: start; overscroll-behavior: contain; }
+.cempty p { color: var(--muted); margin: 0 0 12px; }
+.csugg { display: grid; gap: 8px; }
+.csugg button { text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 10px 12px; cursor: pointer; font-size: 14px; }
+.csugg button:hover, .csugg button:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.turn { display: grid; gap: 8px; min-width: 0; }
+.turn.user { justify-items: end; }
+.turn .q { background: var(--ink); color: var(--bg); padding: 9px 13px; border-radius: 14px 14px 4px 14px; max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.turn .a { font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; min-width: 0; }
+.turn .a > :first-child { margin-top: 0; }
+.turn .a p, .turn .a ul, .turn .a ol { margin: 0 0 10px; }
+.turn .a ul, .turn .a ol { padding-left: 20px; }
+.turn .a li + li { margin-top: 3px; }
+.turn .a h5 { font: 600 14px/1.3 var(--f-display); margin: 14px 0 6px; }
+.turn .a code { font-family: var(--f-mono); font-size: 12.5px; background: var(--sunk); padding: 1px 4px; border-radius: 3px; }
+.turn .a .tbl { margin: 6px 0 12px; }
+.turn .a table { font-size: 12.5px; }
+.turn .a td:first-child { font-size: 12.5px; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.tools span { font: 11.5px var(--f-mono); color: var(--muted); background: var(--sunk); border-radius: 999px; padding: 3px 9px; }
+.tools span::before { content: "✓ "; color: var(--pos); }
+.cfig { margin: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; }
+.cfig .chart text { font-size: 17px; }
+.cfig figcaption { font: 600 13px var(--f-display); }
+.typing { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 4px; }
+.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; margin-right: 6px; }
+@keyframes blink { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .7; } }
+.cin { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); align-items: flex-end; }
+.cin textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); line-height: 1.4; max-height: 160px; }
+.cin textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
 .skel { height: 120px; border-radius: 6px; background: linear-gradient(90deg, var(--sunk), var(--surface), var(--sunk)); background-size: 200% 100%; animation: sh 1.4s infinite linear; }
 @keyframes sh { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
@@ -296,6 +347,9 @@ footer { color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--lin
     <div class="skel"></div>
   </main>
 </div>
+
+<button type="button" class="chatfab" id="chatFab" aria-label="Ask a question about this company"><span class="spark"></span>Ask</button>
+<aside class="chatpane" id="chatPane" hidden aria-label="Ask about this company"></aside>
 
 <script>
 "use strict";
@@ -713,6 +767,7 @@ async function load(symbol) {
     d.bs.forEach(r => r.label = qLabel(r)); d.cf.forEach(r => r.label = qLabel(r));
     d.currency = d.inc[d.inc.length - 1].reportedCurrency || profile.currency || "USD";
     STATE.segSel = {}; STATE.px = null;
+    if (STATE.peerData && STATE.peerData.for !== symbol) STATE.peerData = null;
     d.fc = buildForecast(d);
     render(d);
   } catch (e) {
@@ -828,6 +883,7 @@ function render(d) {
   }));
   if (STATE.tab === "peers") renderPeers();
   if (STATE.px && STATE.px.open) renderPx(false);
+  if (STATE.chatOpen) renderChat();
 }
 
 function renderIncTable() {
@@ -1585,6 +1641,7 @@ async function renderPeers() {
   const errs = {}, ok = [];
   res.forEach((r, i) => { if (r.status === "fulfilled") ok.push(r.value); else errs[syms[i]] = r.reason && r.reason.message || "Failed"; });
   const me = ok.find(x => x.sym === main), peers = ok.filter(x => x.sym !== main);
+  if (me) STATE.peerData = { for: main, me, peers, errs };
   let html = peerControls(syms, errs);
   if (!me) { pane.innerHTML = html + `<div class="status err">Couldn't load ${esc(main)} for comparison.</div>`; wirePeerControls(); return; }
   if (!peers.length) { pane.innerHTML = html + `<div class="status">Add a ticker above to compare ${esc(main)} with peers.</div>`; wirePeerControls(); return; }
@@ -1694,6 +1751,313 @@ function attachSearch(input, sugg, onPick) {
   input.addEventListener("blur", () => setTimeout(close, 120));
 }
 
+/* ============ Ask: chat grounded in the loaded company and peers ============ */
+const CHAT_MODELS = { "claude-sonnet-5-5": "Sonnet 5.5 · fast", "claude-opus-5-5": "Opus 5.5 · deepest", "claude-haiku-5-5": "Haiku 5.5 · cheapest" };
+const CHAT = { msgs: [], busy: false, forSym: null, abort: null };
+const chatKey = () => store.get("anthropicKey") || "";
+const chatModel = () => { const m = store.get("chatModel"); return CHAT_MODELS[m] ? m : "claude-sonnet-5-5"; };
+
+const r4 = v => isNum(v) ? +(+v).toPrecision(5) : null;
+const pctN = v => isNum(v) ? +(v * 100).toFixed(2) : null;   // percentages as numbers, e.g. 12.34 means 12.34%
+const strip = h => String(h || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+
+function compactPeer(x) {
+  if (!x) return null;
+  return { symbol: x.sym, name: x.name, latestQuarter: x.label, marketCap: r4(x.mktCap), tradingCurrency: x.tradeCur,
+    revGrowthQoQ_pct: pctN(x.revQoQ), revGrowthYoY_pct: pctN(x.revYoY), nextFYRevGrowthEst_pct: pctN(x.fwdRevG),
+    grossMarginQ_pct: pctN(x.gmQ), opMarginQ_pct: pctN(x.omQ), netMarginQ_pct: pctN(x.nmQ),
+    grossMarginTTM_pct: pctN(x.gmT), opMarginTTM_pct: pctN(x.omT), netMarginTTM_pct: pctN(x.nmT),
+    pe: r4(x.pe), fwdPE: r4(x.fpe), evSales: r4(x.evS), evEbitda: r4(x.evE), pFcf: r4(x.pfcf), fcfYield_pct: pctN(x.fcfY), roic_pct: pctN(x.roic), netDebtToEbitda: r4(x.ndE) };
+}
+
+function segContext(seg) {
+  if (!seg) return null;
+  const rows = seg.rows.slice(-(seg.mode === "quarter" ? 9 : 5));
+  return { frequency: seg.mode === "quarter" ? "quarterly" : "annual (quarterly not available on this data plan)",
+    periods: rows.map(r => ({ period: r.label, date: r.date, revenue: Object.fromEntries(seg.names.map(n => [n, r4(r.data[n])])) })) };
+}
+
+function buildChatContext() {
+  const d = STATE.d; if (!d) return null;
+  const p = d.profile, f = d.fc;
+  const q = d.inc.slice(-9).map(r => ({ period: r.label, periodEnd: r.date, revenue: r4(r.revenue), revQoQ_pct: pctN(r.revQoQ), revYoY_pct: pctN(r.revYoY),
+    grossProfit: r4(r.grossProfit), operatingIncome: r4(r.operatingIncome), netIncome: r4(r.netIncome), dilutedEPS: r4(r.epsDiluted),
+    grossMargin_pct: pctN(r.grossProfit ? r.gm : null), opMargin_pct: pctN(r.om), netMargin_pct: pctN(r.nm),
+    rnd_pctRev: pctN(r.rdPct), sga_pctRev: pctN(r.sgaPct), taxRate_pct: pctN(r.taxRate), dilutedShares: r4(r.weightedAverageShsOutDil) }));
+  const b = d.bs.slice(-5).map(r => ({ period: r.label, cashAndSTInvestments: r4(r.cashAndShortTermInvestments), receivables: r4(r.netReceivables), inventory: r4(r.inventory),
+    totalAssets: r4(r.totalAssets), totalDebt: r4(r.totalDebt), netDebt: r4(r.netDebt), totalEquity: r4(r.totalStockholdersEquity), deferredRevenue: r4(r.deferredRevenue) }));
+  const c = d.cf.slice(-8).map(r => ({ period: r.label, operatingCashFlow: r4(r.operatingCashFlow), capex: r4(r.capitalExpenditure), freeCashFlow: r4(r.freeCashFlow),
+    buybacks: r4(r.commonStockRepurchased), dividends: r4(r.commonDividendsPaid), sbc: r4(r.stockBasedCompensation) }));
+  const fc = f ? {
+    nextQuarter: f.label, reportDate: f.date || null,
+    consensusRevenue: r4(f.cRev), consensusRevQoQ_pct: pctN(f.cRevQoQ), consensusRevYoY_pct: pctN(f.cRevYoY),
+    consensusEPS: r4(f.cEps), consensusEpsQoQ_pct: pctN(f.cEpsQoQ), consensusEpsYoY_pct: pctN(f.cEpsYoY),
+    toolModelRevenue: r4(f.mRev), toolModelVsConsensus_pct: pctN(f.modelVsCons), toolModelOpMargin_pct: pctN(f.mOm),
+    upcomingReports: f.ups.map(u => ({ quarter: u.label, date: u.date, revenueEst: r4(u.revenueEstimated), epsEst: r4(u.epsEstimated) })),
+    pastReports: f.past.map(e => ({ quarter: e.rowIdx >= 0 ? d.inc[e.rowIdx].label : null, reportDate: e.date, revenueEst: r4(e.revenueEstimated), revenueActual: r4(e.revenueActual), revSurprise_pct: pctN(e.revS), epsEst: r4(e.epsEstimated), epsActual: r4(e.epsActual), epsSurprise_pct: pctN(e.epsS) })),
+    fullYearConsensus: (f.annual || []).map(a => ({ year: a.label, revenue: r4(a.rev), revGrowth_pct: pctN(a.revG), eps: r4(a.eps), epsGrowth_pct: pctN(a.epsG), fwdPE: r4(a.fpe), analysts: a.nRev })),
+    priceTarget: f.pt ? { consensus: f.pt.targetConsensus, high: f.pt.targetHigh, low: f.pt.targetLow, median: f.pt.targetMedian, upside_pct: pctN(f.pt.upside) } : null
+  } : null;
+  const pd = STATE.peerData && STATE.peerData.for === d.symbol ? STATE.peerData : null;
+  return {
+    asOf: todayISO(),
+    company: { symbol: d.symbol, name: p.companyName, sector: p.sector, industry: p.industry, exchange: p.exchange, price: p.price, dayChange_pct: p.changePercentage, marketCap: p.marketCap, tradingCurrency: p.currency, reportingCurrency: d.currency },
+    toolView: { comparisonMode: MODE() === "qoq" ? "QoQ" : "YoY", activeTab: STATE.tab === "peers" ? "Peers & valuation" : "Company" },
+    autoInsightsShownOnScreen: { headline: d.ins.verdict, cards: d.ins.list.map(i => ({ topic: i.tag, title: i.title, text: strip(i.body) })) },
+    quarterlyIncome: q, balanceSheet: b, cashFlow: c,
+    segmentsByProduct: segContext(d.seg), segmentsByRegion: segContext(d.geo), forecast: fc,
+    peers: pd ? { note: "Peer medians exclude the main company. Valuation multiples are TTM.", main: compactPeer(pd.me), peers: pd.peers.map(compactPeer), loadErrors: pd.errs } : "not loaded"
+  };
+}
+
+const CHAT_SYSTEM = `You are the analyst assistant inside "Live Equity Monitor", a single-stock tool used on a markets desk.
+The user is looking at one company (and optionally a peer group). Its loaded data is given below as JSON. Values ending in _pct are percentages already multiplied by 100 (12.3 means 12.3%). Monetary values are raw units in the stated currency.
+
+How to answer:
+- Lead with the answer in one or two sentences, then supporting points. Desk style: tight, numerate, no filler. Use short bullets and small markdown tables when comparing.
+- Ground every figure in the data or a tool result, and name the period (e.g. "Q3 FY26", "TTM"). Never invent numbers. If something isn't in the data and no tool can get it, say so plainly.
+- Use the tools to fetch anything not already loaded: another ticker's metrics, more financial history, or daily OHLC prices (e.g. to measure a share-price reaction around an earnings date).
+- Call render_chart when a picture makes the answer clearer (trends, peer comparisons). Keep charts small and labelled; the chart appears in the chat.
+- Respect the user's comparison mode (QoQ or YoY) unless they ask otherwise. Be careful with QoQ for seasonal businesses and say when a move is seasonal.
+- You can give views on what the numbers imply, but frame them as analysis, not personal investment advice.`;
+
+const CHAT_TOOLS = [
+  { name: "get_company_snapshot", description: "Fetch growth, margin and valuation metrics (TTM multiples, latest quarter growth and margins, next-year revenue growth estimate) for any ticker. Use for peers or companies not already loaded.",
+    input_schema: { type: "object", properties: { symbol: { type: "string", description: "Ticker, e.g. MSFT" } }, required: ["symbol"] } },
+  { name: "get_quarterly_financials", description: "Fetch up to 12 quarters of income-statement data (revenue, gross/operating/net income, EPS, margins, growth) for any ticker.",
+    input_schema: { type: "object", properties: { symbol: { type: "string" }, quarters: { type: "integer", minimum: 2, maximum: 12 } }, required: ["symbol"] } },
+  { name: "get_price_history", description: "Fetch daily OHLC prices and volume for a ticker between two dates (YYYY-MM-DD). Ranges over 130 trading days are returned as weekly OHLC.",
+    input_schema: { type: "object", properties: { symbol: { type: "string" }, from: { type: "string" }, to: { type: "string" } }, required: ["symbol", "from", "to"] } },
+  { name: "render_chart", description: "Draw a chart in the chat. Use 'bar' for comparisons across companies or periods, 'line' for trends. values must align with labels; use null for gaps. format controls axis labels: pct expects fractions (0.25 = 25%), pp_pct expects percent numbers (25 = 25%), money, multiple (x), number.",
+    input_schema: { type: "object", properties: {
+      type: { type: "string", enum: ["bar", "line"] }, title: { type: "string" }, labels: { type: "array", items: { type: "string" } },
+      series: { type: "array", items: { type: "object", properties: { name: { type: "string" }, values: { type: "array", items: { type: ["number", "null"] } } }, required: ["name", "values"] } },
+      format: { type: "string", enum: ["pct", "pp_pct", "money", "multiple", "number"] }, highlight: { type: "string", description: "Optional label to emphasise, e.g. the main ticker" } },
+      required: ["type", "title", "labels", "series"] } }
+];
+
+async function runChatTool(name, input, sink) {
+  const sym = String(input.symbol || "").trim().toUpperCase();
+  if (name === "get_company_snapshot") return compactPeer(await peerMetrics(sym));
+  if (name === "get_quarterly_financials") {
+    const n = Math.max(2, Math.min(12, input.quarters || 8));
+    const raw = await api("income-statement", { symbol: sym, period: "quarter", limit: n + 4 });
+    const rows = enrichIncome([...raw].sort((a, b) => a.date < b.date ? -1 : 1)).slice(-n);
+    return { symbol: sym, currency: rows.length ? rows[rows.length - 1].reportedCurrency : null, quarters: rows.map(r => ({ period: r.label, periodEnd: r.date, revenue: r4(r.revenue), revQoQ_pct: pctN(r.revQoQ), revYoY_pct: pctN(r.revYoY), grossMargin_pct: pctN(r.grossProfit ? r.gm : null), opMargin_pct: pctN(r.om), netMargin_pct: pctN(r.nm), operatingIncome: r4(r.operatingIncome), netIncome: r4(r.netIncome), dilutedEPS: r4(r.epsDiluted) })) };
+  }
+  if (name === "get_price_history") {
+    const rows = await prices(sym, input.from, input.to);
+    const out = rows.length > 130 ? toWeekly(rows) : rows;
+    return { symbol: sym, frequency: rows.length > 130 ? "weekly" : "daily", rows: out.map(r => [r.date, r.open, r.high, r.low, r.close, r.volume]), columns: ["date", "open", "high", "low", "close", "volume"] };
+  }
+  if (name === "render_chart") { sink.charts.push(input); return { rendered: true }; }
+  throw new Error("Unknown tool " + name);
+}
+
+function chartFromSpec(spec) {
+  const fm = spec.format || "number", cur = STATE.d ? STATE.d.currency : "USD";
+  const fmt = fm === "pct" ? (v => pctPlain(v, 0)) : fm === "pp_pct" ? (v => (+v).toFixed(0) + "%") : fm === "money" ? (v => money(v, cur)) : fm === "multiple" ? (v => (+v).toFixed(1) + "×") : (v => Math.abs(v) >= 1000 ? money(v, "").replace("$", "") : (+v).toFixed(Math.abs(v) < 10 ? 2 : 0));
+  const labels = (spec.labels || []).map(String).slice(0, 24);
+  const series = (spec.series || []).slice(0, 6).map((s, i) => ({ name: String(s.name || "Series " + (i + 1)), color: PAL[i % PAL.length], values: labels.map((_, k) => isNum(s.values && s.values[k]) ? s.values[k] : null) }));
+  if (!labels.length || !series.length) return "";
+  let svg;
+  if (spec.type === "line") svg = lineChart(labels, series, { fmt, title: spec.title });
+  else {
+    const hl = spec.highlight ? String(spec.highlight).toUpperCase() : null;
+    const fills = series.length === 1 && hl ? labels.map(l => l.toUpperCase() === hl ? "var(--accent)" : "var(--c8)") : null;
+    svg = barChart(labels, series, { fmt, fills, title: spec.title });
+  }
+  return `<figure class="cfig"><figcaption>${esc(spec.title || "")}</figcaption>${series.length > 1 ? legend(series) : ""}<div class="chart">${svg}</div></figure>`;
+}
+
+/* small, safe markdown: headings, bold/italic, code, lists, tables, paragraphs */
+function mdInline(t) {
+  return esc(t).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, "$1<i>$2</i>")
+    .replace(/(^|[\s(])([+−-]?\d[\d.,]*%)/g, (m0, a, n) => `${a}<span class="${/^[−-]/.test(n) ? "dn" : /^\+/.test(n) ? "up" : ""}">${n}</span>`);
+}
+function md(src) {
+  const lines = String(src || "").replace(/\r/g, "").split("\n"); let out = "", i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*$/.test(l)) { i++; continue; }
+    if (/^#{1,4}\s/.test(l)) { out += `<h5>${mdInline(l.replace(/^#+\s/, ""))}</h5>`; i++; continue; }
+    if (/^\s*\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+      const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const head = cells(l); i += 2; const body = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) body.push(cells(lines[i++]));
+      out += `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${mdInline(h)}</th>`).join("")}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${mdInline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      continue;
+    }
+    if (/^\s*([-*•]|\d+\.)\s/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l); const items = [];
+      while (i < lines.length && /^\s*([-*•]|\d+\.)\s/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*•]|\d+\.)\s/, ""));
+      out += `<${ordered ? "ol" : "ul"}>${items.map(x => `<li>${mdInline(x)}</li>`).join("")}</${ordered ? "ol" : "ul"}>`;
+      continue;
+    }
+    const para = []; while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^#{1,4}\s|^\s*\||^\s*([-*•]|\d+\.)\s/.test(lines[i])) para.push(lines[i++]);
+    out += `<p>${mdInline(para.join(" "))}</p>`;
+  }
+  return out;
+}
+
+async function streamClaude(body, onEvent, signal) {
+  let r;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", signal,
+      headers: { "content-type": "application/json", "x-api-key": chatKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ ...body, stream: true }) });
+  } catch (e) { if (e.name === "AbortError") throw e; throw new Error("Couldn't reach the Anthropic API. Check your connection."); }
+  if (!r.ok) {
+    let m = `HTTP ${r.status}`; try { const j = await r.json(); m = (j.error && j.error.message) || m; } catch (e) {}
+    const hint = r.status === 401 ? " Check your Anthropic API key in Settings." : r.status === 429 ? " Rate limited, try again in a moment." : r.status === 529 ? " The API is busy, try again shortly." : "";
+    throw new Error(m + hint);
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let k; while ((k = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, k); buf = buf.slice(k + 2);
+      const dl = chunk.split("\n").find(x => x.startsWith("data:")); if (!dl) continue;
+      try { onEvent(JSON.parse(dl.slice(5))); } catch (e) {}
+    }
+  }
+}
+
+async function askClaude(question) {
+  if (CHAT.busy || !question.trim()) return;
+  if (!chatKey()) { renderChat(); return; }
+  const d = STATE.d; if (!d) return;
+  CHAT.busy = true;
+  const mark = () => CHAT.msgs.length;
+  if (CHAT.forSym !== d.symbol) { CHAT.msgs = []; CHAT.forSym = d.symbol; CHAT.view = []; }
+  CHAT.view.push({ role: "user", text: question });
+  const turn = { role: "assistant", text: "", charts: [], status: "Reading the data…", tools: [] };
+  CHAT.view.push(turn); renderChat();
+  try {
+    if (!(STATE.peerData && STATE.peerData.for === d.symbol)) { turn.status = "Loading peer group…"; renderChatTurn(turn); await ensurePeerData().catch(() => {}); }
+    var startLen = mark();
+    const ctx = buildChatContext();
+    const system = CHAT_SYSTEM + "\n\nLOADED DATA (JSON):\n" + JSON.stringify(ctx);
+    CHAT.msgs.push({ role: "user", content: question });
+    const ac = new AbortController(); CHAT.abort = ac;
+    for (let round = 0; round < 8; round++) {
+      const blocks = []; let stop = null;
+      turn.status = round ? "Writing…" : "Thinking…"; renderChatTurn(turn);
+      await streamClaude({ model: chatModel(), max_tokens: 3000, system, tools: CHAT_TOOLS, messages: CHAT.msgs }, ev => {
+        if (ev.type === "content_block_start") blocks[ev.index] = ev.content_block.type === "tool_use" ? { type: "tool_use", id: ev.content_block.id, name: ev.content_block.name, json: "" } : { type: "text", text: "" };
+        else if (ev.type === "content_block_delta") {
+          const b2 = blocks[ev.index]; if (!b2) return;
+          if (ev.delta.type === "text_delta") { b2.text += ev.delta.text; turn.text += ev.delta.text; turn.status = ""; renderChatTurn(turn); }
+          else if (ev.delta.type === "input_json_delta") b2.json += ev.delta.partial_json;
+        } else if (ev.type === "message_delta" && ev.delta) stop = ev.delta.stop_reason || stop;
+        else if (ev.type === "error") throw new Error((ev.error && ev.error.message) || "Stream error");
+      }, ac.signal);
+      const content = blocks.filter(Boolean).map(b2 => b2.type === "text" ? { type: "text", text: b2.text } : { type: "tool_use", id: b2.id, name: b2.name, input: (() => { try { return JSON.parse(b2.json || "{}"); } catch (e) { return {}; } })() }).filter(b2 => b2.type !== "text" || b2.text);
+      CHAT.msgs.push({ role: "assistant", content });
+      const uses = content.filter(b2 => b2.type === "tool_use");
+      if (stop !== "tool_use" || !uses.length) break;
+      const results = [];
+      for (const u of uses) {
+        const lab = u.name === "render_chart" ? "Drawing chart" : u.name === "get_price_history" ? `Fetching prices for ${u.input.symbol}` : u.name === "get_quarterly_financials" ? `Fetching financials for ${u.input.symbol}` : `Fetching ${u.input.symbol} metrics`;
+        turn.tools.push(lab); turn.status = lab + "…"; renderChatTurn(turn);
+        try { const res = await runChatTool(u.name, u.input, turn); results.push({ type: "tool_result", tool_use_id: u.id, content: JSON.stringify(res).slice(0, 60000) }); }
+        catch (e) { results.push({ type: "tool_result", tool_use_id: u.id, content: "Error: " + (e.message || e), is_error: true }); }
+        renderChatTurn(turn);
+      }
+      if (turn.text && !/\n\n$/.test(turn.text)) turn.text += "\n\n";
+      CHAT.msgs.push({ role: "user", content: results });
+    }
+    // keep the conversation compact: drop whole old exchanges, always starting on a plain user question
+    while (CHAT.msgs.length > 30) { CHAT.msgs.shift(); while (CHAT.msgs.length && !(CHAT.msgs[0].role === "user" && typeof CHAT.msgs[0].content === "string")) CHAT.msgs.shift(); }
+  } catch (e) {
+    if (e.name === "AbortError") turn.text += (turn.text ? "\n\n" : "") + "*Stopped.*";
+    else turn.error = e.message || String(e);
+    // roll back to a valid conversation so the next question still works
+    if (typeof startLen === "number") CHAT.msgs.length = startLen;
+  } finally {
+    turn.status = ""; CHAT.busy = false; CHAT.abort = null; renderChat();
+  }
+}
+
+async function ensurePeerData() {
+  const d = STATE.d, main = d.symbol;
+  let syms = STATE.peerFor === main && STATE.peers ? STATE.peers : null;
+  if (!syms) { try { const s = JSON.parse(store.get("peers:" + main) || "null"); if (Array.isArray(s)) syms = s; } catch (e) {} }
+  if (!syms) syms = await suggestedPeers(main);
+  const all = [main, ...syms.filter(s => s !== main)];
+  const res = await Promise.allSettled(all.map(peerMetrics));
+  const ok = [], errs = {};
+  res.forEach((r, i) => r.status === "fulfilled" ? ok.push(r.value) : errs[all[i]] = r.reason && r.reason.message);
+  const me = ok.find(x => x.sym === main);
+  if (me) STATE.peerData = { for: main, me, peers: ok.filter(x => x.sym !== main), errs };
+}
+
+function chatSuggestions() {
+  const d = STATE.d; if (!d) return [];
+  const m = MODE() === "qoq" ? "QoQ" : "YoY", nx = d.fc ? d.fc.label : "next quarter";
+  return [`What's driving ${m} revenue growth right now?`, `Is ${d.symbol} cheap or expensive vs peers, and is it justified?`, `What should I watch into the ${nx} print?`,
+    `How did the stock react to the last 4 earnings reports?`, `Chart operating margin vs peers`, `Where are margins heading and why?`];
+}
+
+function renderChatTurn(t) {
+  const el = document.querySelector(`[data-turn="${CHAT.view.indexOf(t)}"]`);
+  if (!el) return renderChat();
+  el.innerHTML = turnHtml(t);
+  const log = document.getElementById("chatLog"); if (log && log.scrollHeight - log.scrollTop - log.clientHeight < 160) log.scrollTop = log.scrollHeight;
+}
+function turnHtml(t) {
+  if (t.role === "user") return `<div class="q">${esc(t.text)}</div>`;
+  return `${t.tools.length ? `<div class="tools">${t.tools.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}
+    ${t.text ? `<div class="a">${md(t.text)}</div>` : ""}${t.charts.map(chartFromSpec).join("")}
+    ${t.status ? `<div class="typing"><i></i><i></i><i></i> ${esc(t.status)}</div>` : ""}
+    ${t.error ? `<div class="status err">${esc(t.error)}</div>` : ""}`;
+}
+
+function renderChat() {
+  const pane = document.getElementById("chatPane"); if (!pane) return;
+  const d = STATE.d, open = !!STATE.chatOpen;
+  document.getElementById("chatFab").hidden = open;
+  pane.hidden = !open; document.body.classList.toggle("chat-open", open);
+  if (!open) return;
+  if (d && CHAT.forSym && CHAT.forSym !== d.symbol && !CHAT.busy) { CHAT.msgs = []; CHAT.view = []; CHAT.forSym = d.symbol; }
+  const key = chatKey(), view = CHAT.view || [];
+  const pd = d && STATE.peerData && STATE.peerData.for === d.symbol ? STATE.peerData : null;
+  const ctxLine = d ? `${esc(d.symbol)}${pd ? ` + ${pd.peers.map(p => esc(p.sym)).join(", ")}` : " · peers load on first question"}` : "No company loaded";
+  const settings = STATE.chatSettings || !key;
+  pane.innerHTML = `
+    <div class="chead"><div><span class="eyebrow">Ask about</span><b>${ctxLine}</b></div>
+      <div class="cbtns">${view.length ? `<button type="button" class="btn ghost sm" id="chatClear">New chat</button>` : ""}<button type="button" class="btn ghost sm" id="chatSet" aria-expanded="${settings}">Settings</button><button type="button" class="btn ghost sm" id="chatClose" aria-label="Close chat">×</button></div></div>
+    ${settings ? `<form class="cset" id="chatSetForm">
+        <label for="anthKey">Anthropic API key</label>
+        <input id="anthKey" type="password" placeholder="sk-ant-…" value="${esc(key)}" autocomplete="off" spellcheck="false">
+        <label for="chatModelSel">Model</label>
+        <select id="chatModelSel">${Object.entries(CHAT_MODELS).map(([k, v]) => `<option value="${k}" ${k === chatModel() ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
+        <p class="note">The chat calls Claude directly from this page with your own key from console.anthropic.com, billed to your Anthropic account. The key is saved only in this browser.</p>
+        <button class="btn" type="submit">Save</button></form>` : ""}
+    <div class="clog" id="chatLog" aria-live="polite">
+      ${view.length ? view.map((t, i) => `<div class="turn ${t.role}" data-turn="${i}">${turnHtml(t)}</div>`).join("") :
+        `<div class="cempty"><p>Ask anything about ${d ? esc(d.profile.companyName || d.symbol) : "the company"}: its results, segments, forecasts, price reactions or how it compares with peers. Answers use the data loaded in the monitor and can fetch more.</p>
+          <div class="csugg">${chatSuggestions().map(s => `<button type="button" data-ask="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
+    </div>
+    <form class="cin" id="chatForm"><textarea id="chatInput" rows="1" placeholder="${key ? "Ask a question…" : "Add your Anthropic API key in Settings to start"}" ${key ? "" : "disabled"} aria-label="Ask a question"></textarea>
+      ${CHAT.busy ? `<button class="btn ghost" type="button" id="chatStop">Stop</button>` : `<button class="btn" type="submit" ${key ? "" : "disabled"}>Ask</button>`}</form>`;
+  const log = document.getElementById("chatLog"); log.scrollTop = log.scrollHeight;
+  const inp = document.getElementById("chatInput");
+  const grow = () => { inp.style.height = "auto"; inp.style.height = Math.min(160, inp.scrollHeight) + "px"; };
+  inp.addEventListener("input", grow);
+  inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("chatForm").requestSubmit(); } });
+  document.getElementById("chatForm").addEventListener("submit", e => { e.preventDefault(); const v = inp.value; if (!v.trim() || CHAT.busy) return; inp.value = ""; askClaude(v); });
+  const stop = document.getElementById("chatStop"); if (stop) stop.addEventListener("click", () => CHAT.abort && CHAT.abort.abort());
+  pane.querySelectorAll("[data-ask]").forEach(b => b.addEventListener("click", () => askClaude(b.dataset.ask)));
+  document.getElementById("chatClose").addEventListener("click", () => { STATE.chatOpen = false; renderChat(); document.getElementById("chatFab").focus(); });
+  document.getElementById("chatSet").addEventListener("click", () => { STATE.chatSettings = !settings || !key ? !STATE.chatSettings : false; if (!key) STATE.chatSettings = true; renderChat(); });
+  const clr = document.getElementById("chatClear"); if (clr) clr.addEventListener("click", () => { if (CHAT.abort) CHAT.abort.abort(); CHAT.msgs = []; CHAT.view = []; renderChat(); });
+  const sf = document.getElementById("chatSetForm");
+  if (sf) sf.addEventListener("submit", e => { e.preventDefault(); store.set("anthropicKey", document.getElementById("anthKey").value.trim()); store.set("chatModel", document.getElementById("chatModelSel").value); STATE.chatSettings = false; renderChat(); });
+  if (key && !settings && !CHAT.busy) inp.focus({ preventScroll: true });
+}
+
 /* ============ search / UI wiring ============ */
 (function wire() {
   const input = document.getElementById("tickerInput"), sugg = document.getElementById("sugg");
@@ -1720,6 +2084,8 @@ function attachSearch(input, sugg, onPick) {
   }));
   let rsT = null, lastW = window.innerWidth;
   window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (window.innerWidth !== lastW && STATE.px && STATE.px.open) { lastW = window.innerWidth; renderPx(false); } }, 250); });
+  document.getElementById("chatFab").addEventListener("click", () => { STATE.chatOpen = true; renderChat(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && STATE.chatOpen && !CHAT.busy) { STATE.chatOpen = false; renderChat(); } });
   const appEl = document.getElementById("app");
   appEl.addEventListener("click", e => {
     const t = e.target.closest("[data-evt],[data-pxmode],[data-pxrange],[data-pxclose]");
