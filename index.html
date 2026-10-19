@@ -10,18 +10,20 @@
 <style>
 /* Layout: a sticky ticker bar, then summary-first reading order — verdict, KPIs, then each statement with its chart beside its table. */
 :root {
-  --bg: #f3f4f1;
+  /* cool neutrals + a blue accent; green and red are kept only for gains and losses */
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --sunk: #e9ebe6;
-  --line: #d6d9d2;
-  --ink: #171a17;
-  --muted: #5d635b;
-  --accent: #1f5c4a;
-  --accent-soft: #dce9e3;
-  --c1: #1f5c4a; --c2: #c27a2c; --c3: #3d6fb0; --c4: #8a4f9e; --c5: #b8484e; --c6: #6e8a2e; --c7: #4a8c95; --c8: #8c7a5b;
-  --pos: #1d7a45; --pos-soft: #ddf0e3;
-  --neg: #b23a32; --neg-soft: #f7e0dd;
-  --neu: #6a6f68; --neu-soft: #eceee9;
+  --sunk: #eceef2;
+  --line: #d8dce3;
+  --ink: #15181d;
+  --muted: #5a6170;
+  --accent: #1f63c4;
+  --accent-soft: #dce8f8;
+  /* categorical slots (validated for colour-blind separation): blue, orange, aqua, violet, magenta, yellow, teal; c8 is the neutral "other/peer" grey */
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #6250d6; --c5: #e87ba4; --c6: #eda100; --c7: #0f8a9d; --c8: #8a93a1;
+  --pos: #16803c; --pos-soft: #dff2e6;
+  --neg: #c23a32; --neg-soft: #f9e1de;
+  --neu: #6b7280; --neu-soft: #edf0f3;
   --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
   --f-body: "Hanken Grotesk", "Helvetica Neue", Arial, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -29,10 +31,10 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111412; --surface: #191d1a; --sunk: #222723; --line: #323832; --ink: #e8ebe6; --muted: #9aa197;
-    --accent: #6fc2a3; --accent-soft: #1f3a31;
-    --c1: #6fc2a3; --c2: #e0a25e; --c3: #7aa6e0; --c4: #c08ad1; --c5: #e07f84; --c6: #a7c464; --c7: #78c0c9; --c8: #c4b08a;
-    --pos: #5cc98a; --pos-soft: #1b3326; --neg: #ee7b72; --neg-soft: #3a211f; --neu: #a0a69d; --neu-soft: #262b27;
+    --bg: #0f1216; --surface: #171b21; --sunk: #20252d; --line: #2e3440; --ink: #e8ebf0; --muted: #9aa3b1;
+    --accent: #5b9be8; --accent-soft: #1a2c44;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #9085e9; --c5: #d55181; --c6: #c98500; --c7: #3fb1c4; --c8: #8c95a3;
+    --pos: #4cc77f; --pos-soft: #15301f; --neg: #ef7a72; --neg-soft: #3b1f1d; --neu: #a3abb7; --neu-soft: #252a32;
     color-scheme: dark;
   }
 }
@@ -85,12 +87,24 @@ main { padding-block: 28px 64px; display: grid; gap: 40px; }
 .eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 
 /* verdict */
-.verdict { font: 500 clamp(18px, 2.2vw, 22px)/1.45 var(--f-display); max-width: 62ch; margin: 0; text-wrap: pretty; }
+.verdict { font: 500 16px/1.5 var(--f-body); color: var(--ink); max-width: 90ch; margin: 0; text-wrap: pretty; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
 .insights { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
 .ins { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: 4px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
 .ins.pos { border-left-color: var(--pos); }
 .ins.neg { border-left-color: var(--neg); }
 .ins.neu { border-left-color: var(--neu); }
+.insights.drivers { align-items: start; }
+details.ins { padding: 0; gap: 0; }
+details.ins summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 12px 14px; align-items: center; }
+details.ins summary::-webkit-details-marker { display: none; }
+details.ins summary .tag { grid-column: 1; }
+details.ins summary h3 { grid-column: 1; }
+details.ins summary .chev { grid-column: 2; grid-row: 1 / span 2; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .15s; margin-top: -4px; }
+details.ins[open] summary .chev { transform: rotate(-135deg); margin-top: 4px; }
+details.ins summary:hover h3 { color: var(--accent); }
+details.ins summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+details.ins > p { padding: 0 14px 14px; }
+@media (prefers-reduced-motion: reduce) { details.ins summary .chev { transition: none; } }
 .ins .tag { font: 500 10.5px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .ins h3 { margin: 0; font: 600 16px/1.3 var(--f-display); }
 .ins p { margin: 0; color: var(--muted); font-size: 14px; }
@@ -301,6 +315,16 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .tools span::before { content: "✓ "; color: var(--pos); }
 .cfig { margin: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; }
 .cfig .chart text { font-size: 17px; }
+.turn .a .muted, .turn .a .muted * { color: var(--muted); font-size: 12.5px; }
+.turn .a hr.sep { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.turn .a td b { font-weight: 600; }
+.cset .seg { justify-self: start; }
+.cmode { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.cmode .seg button { padding: 5px 12px; }
+.csugg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.csugg button { font-size: 13.5px; padding: 9px 11px; }
+.more { justify-self: start; border: 0; background: none; color: var(--accent); font: 600 13px var(--f-body); padding: 2px 0; cursor: pointer; }
+.more:hover { text-decoration: underline; }
 .cfig figcaption { font: 600 13px var(--f-display); }
 .typing { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 4px; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 1.2s infinite; }
@@ -777,7 +801,7 @@ async function load(symbol) {
 }
 
 /* ============ render ============ */
-let STATE = { incMode: "values", cmp: "qoq", segSel: {}, tab: "co", peerSeq: 0, peers: null, peerFor: null, px: null, pxSeq: 0 };
+let STATE = { insOpen: new Set(), incMode: "values", cmp: "qoq", segSel: {}, tab: "co", peerSeq: 0, peers: null, peerFor: null, px: null, pxSeq: 0 };
 function render(d) {
   STATE.d = d;
   d.segL = segmentAnalysis(d.seg, MODE()); d.geoL = segmentAnalysis(d.geo, MODE());
@@ -811,9 +835,10 @@ function render(d) {
   </div>
   <div class="pane" id="pane-co" ${STATE.tab === "peers" ? "hidden" : ""}>
   <section class="sec" id="insights">
-    <div class="sec-h"><div><span class="eyebrow">Where the company is growing</span><h2>Key drivers right now</h2></div></div>
+    <div class="sec-h"><div><span class="eyebrow">Where the company is growing</span><h2>Key drivers right now</h2></div>
+      <button type="button" class="btn ghost sm" id="insAll">${d.ins.list.every(i => STATE.insOpen.has(i.tag.split(" · ")[0])) ? "Collapse all" : "Expand all"}</button></div>
     ${d.ins.verdict ? `<p class="verdict">${esc(d.ins.verdict)}</p>` : ""}
-    <div class="insights">${d.ins.list.map(i => `<article class="ins ${i.tone}"><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><p>${i.body}</p></article>`).join("")}</div>
+    <div class="insights drivers">${d.ins.list.map(i => { const k = i.tag.split(" · ")[0]; return `<details class="ins ${i.tone}" data-k="${esc(k)}" ${STATE.insOpen.has(k) ? "open" : ""}><summary><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><span class="chev" aria-hidden="true"></span></summary><p>${i.body}</p></details>`; }).join("")}</div>
   </section>
 
   <section class="kpis" aria-label="Latest quarter">
@@ -884,6 +909,10 @@ function render(d) {
   if (STATE.tab === "peers") renderPeers();
   if (STATE.px && STATE.px.open) renderPx(false);
   if (STATE.chatOpen) renderChat();
+  const dr = document.querySelectorAll(".drivers details"), allBtn = document.getElementById("insAll");
+  const syncAll = () => { if (allBtn) allBtn.textContent = [...dr].every(x => x.open) ? "Collapse all" : "Expand all"; };
+  dr.forEach(x => x.addEventListener("toggle", () => { x.open ? STATE.insOpen.add(x.dataset.k) : STATE.insOpen.delete(x.dataset.k); syncAll(); }));
+  if (allBtn) allBtn.addEventListener("click", () => { const open = ![...dr].every(x => x.open); dr.forEach(x => x.open = open); syncAll(); });
 }
 
 function renderIncTable() {
@@ -1754,6 +1783,18 @@ function attachSearch(input, sugg, onPick) {
 /* ============ Ask: chat grounded in the loaded company and peers ============ */
 const CHAT_MODELS = { "claude-sonnet-5-5": "Sonnet 5.5 · fast", "claude-opus-5-5": "Opus 5.5 · deepest", "claude-haiku-5-5": "Haiku 5.5 · cheapest" };
 const CHAT = { msgs: [], busy: false, forSym: null, abort: null };
+const chatDetail = () => store.get("chatDetail") === "detailed" ? "detailed" : "concise";
+function condense(html) {
+  const t = document.createElement("template"); t.innerHTML = html;
+  const p = t.content.querySelector("p");
+  let lead = p ? p.innerHTML : "";
+  if (p && p.textContent.length > 200) { const m = lead.match(/^[\s\S]*?[.!?](<\/b>)?(?=\s|$)/); if (m) lead = m[0]; }
+  const lis = [...t.content.querySelectorAll("li")].slice(0, 3).map(li => {
+    let x = li.innerHTML; if (li.textContent.length > 150) { const m = x.match(/^[\s\S]*?[.;:](?=\s|$)/); if (m && m[0].length > 30) x = m[0].replace(/[;:]$/, "."); }
+    return `<li>${x}</li>`;
+  });
+  return (lead ? `<p>${lead}</p>` : "") + (lis.length ? `<ul>${lis.join("")}</ul>` : "");
+}
 const chatKey = () => store.get("anthropicKey") || "";
 const chatModel = () => { const m = store.get("chatModel"); return CHAT_MODELS[m] ? m : "claude-sonnet-5-5"; };
 
@@ -1820,6 +1861,7 @@ How to answer:
 - Call render_chart when a picture makes the answer clearer (trends, peer comparisons). Keep charts small and labelled; the chart appears in the chat.
 - Respect the user's comparison mode (QoQ or YoY) unless they ask otherwise. Be careful with QoQ for seasonal businesses and say when a move is seasonal.
 - You can give views on what the numbers imply, but frame them as analysis, not personal investment advice.`;
+const CHAT_LEN = { concise: "\n\nLENGTH: Concise. One headline sentence plus at most 3 short bullets (under 80 words total). No tables unless asked.", detailed: "\n\nLENGTH: Detailed. Give the full picture with supporting bullets and a small table where useful." };
 
 const CHAT_TOOLS = [
   { name: "get_company_snapshot", description: "Fetch growth, margin and valuation metrics (TTM multiples, latest quarter growth and margins, next-year revenue growth estimate) for any ticker. Use for peers or companies not already loaded.",
@@ -1864,7 +1906,8 @@ function chartFromSpec(spec) {
   if (spec.type === "line") svg = lineChart(labels, series, { fmt, title: spec.title });
   else {
     const hl = spec.highlight ? String(spec.highlight).toUpperCase() : null;
-    const fills = series.length === 1 && hl ? labels.map(l => l.toUpperCase() === hl ? "var(--accent)" : "var(--c8)") : null;
+    const signed2 = series.length === 1 && !hl && (fm === "pct" || fm === "pp_pct") && series[0].values.some(v => isNum(v) && v < 0);
+    const fills = series.length === 1 && hl ? labels.map(l => l.toUpperCase() === hl ? "var(--accent)" : "var(--c8)") : signed2 ? series[0].values.map(v => isNum(v) && v < 0 ? "var(--neg)" : "var(--pos)") : null;
     svg = barChart(labels, series, { fmt, fills, title: spec.title });
   }
   return `<figure class="cfig"><figcaption>${esc(spec.title || "")}</figcaption>${series.length > 1 ? legend(series) : ""}<div class="chart">${svg}</div></figure>`;
@@ -1926,7 +1969,7 @@ async function streamClaude(body, onEvent, signal) {
 
 async function askClaude(question) {
   if (CHAT.busy || !question.trim()) return;
-  if (!chatKey()) { renderChat(); return; }
+  if (!chatKey()) return askLocal(question);
   const d = STATE.d; if (!d) return;
   CHAT.busy = true;
   const mark = () => CHAT.msgs.length;
@@ -1938,7 +1981,7 @@ async function askClaude(question) {
     if (!(STATE.peerData && STATE.peerData.for === d.symbol)) { turn.status = "Loading peer group…"; renderChatTurn(turn); await ensurePeerData().catch(() => {}); }
     var startLen = mark();
     const ctx = buildChatContext();
-    const system = CHAT_SYSTEM + "\n\nLOADED DATA (JSON):\n" + JSON.stringify(ctx);
+    const system = CHAT_SYSTEM + CHAT_LEN[chatDetail()] + "\n\nLOADED DATA (JSON):\n" + JSON.stringify(ctx);
     CHAT.msgs.push({ role: "user", content: question });
     const ac = new AbortController(); CHAT.abort = ac;
     for (let round = 0; round < 8; round++) {
@@ -1996,8 +2039,9 @@ async function ensurePeerData() {
 function chatSuggestions() {
   const d = STATE.d; if (!d) return [];
   const m = MODE() === "qoq" ? "QoQ" : "YoY", nx = d.fc ? d.fc.label : "next quarter";
-  return [`What's driving ${m} revenue growth right now?`, `Is ${d.symbol} cheap or expensive vs peers, and is it justified?`, `What should I watch into the ${nx} print?`,
-    `How did the stock react to the last 4 earnings reports?`, `Chart operating margin vs peers`, `Where are margins heading and why?`];
+  return [[`What's driving growth?`, `What's driving ${m} revenue growth right now?`], [`Cheap vs peers?`, `Is ${d.symbol} cheap or expensive vs peers, and is it justified?`], [`What to watch into ${nx}`, `What should I watch into the ${nx} print?`],
+    [`Reaction to last 4 prints`, `How did the stock react to the last 4 earnings reports?`], [`Margins vs peers`, `Chart operating margin vs peers`], [`Margin outlook`, `Where are margins heading and why?`],
+    [`Balance sheet`, `Summarise the balance sheet and debt`], [`Cash flow & buybacks`, `Free cash flow and buybacks`]];
 }
 
 function renderChatTurn(t) {
@@ -2009,7 +2053,8 @@ function renderChatTurn(t) {
 function turnHtml(t) {
   if (t.role === "user") return `<div class="q">${esc(t.text)}</div>`;
   return `${t.tools.length ? `<div class="tools">${t.tools.map(x => `<span>${esc(x)}</span>`).join("")}</div>` : ""}
-    ${t.text ? `<div class="a">${md(t.text)}</div>` : ""}${t.charts.map(chartFromSpec).join("")}
+    ${t.html ? (() => { const short = chatDetail() === "concise" && !t.expanded && !t.status; const body = short ? condense(t.html) : t.html; const i = CHAT.view.indexOf(t);
+        return `<div class="a">${body}</div>${!t.status && body !== t.html ? `<button type="button" class="more" data-more="${i}">Show detail ▾</button>` : t.expanded && chatDetail() === "concise" ? `<button type="button" class="more" data-more="${i}">Show less ▴</button>` : ""}`; })() : t.text ? `<div class="a">${md(t.text)}</div>` : ""}${t.charts.map(chartFromSpec).join("")}
     ${t.status ? `<div class="typing"><i></i><i></i><i></i> ${esc(t.status)}</div>` : ""}
     ${t.error ? `<div class="status err">${esc(t.error)}</div>` : ""}`;
 }
@@ -2021,41 +2066,352 @@ function renderChat() {
   pane.hidden = !open; document.body.classList.toggle("chat-open", open);
   if (!open) return;
   if (d && CHAT.forSym && CHAT.forSym !== d.symbol && !CHAT.busy) { CHAT.msgs = []; CHAT.view = []; CHAT.forSym = d.symbol; }
-  const key = chatKey(), view = CHAT.view || [];
+  const key = chatKey(), view = CHAT.view || [], ai = useClaude();
   const pd = d && STATE.peerData && STATE.peerData.for === d.symbol ? STATE.peerData : null;
   const ctxLine = d ? `${esc(d.symbol)}${pd ? ` + ${pd.peers.map(p => esc(p.sym)).join(", ")}` : " · peers load on first question"}` : "No company loaded";
-  const settings = STATE.chatSettings || !key;
+  const settings = !!STATE.chatSettings;
   pane.innerHTML = `
-    <div class="chead"><div><span class="eyebrow">Ask about</span><b>${ctxLine}</b></div>
+    <div class="chead"><div><span class="eyebrow">Ask about · ${ai ? "Claude AI" : "FMP data"}</span><b>${ctxLine}</b></div>
       <div class="cbtns">${view.length ? `<button type="button" class="btn ghost sm" id="chatClear">New chat</button>` : ""}<button type="button" class="btn ghost sm" id="chatSet" aria-expanded="${settings}">Settings</button><button type="button" class="btn ghost sm" id="chatClose" aria-label="Close chat">×</button></div></div>
+    <div class="cmode"><span class="eyebrow">Answers</span><div class="seg" role="group" aria-label="Answer length" id="detSeg">
+      <button type="button" data-det="concise" aria-pressed="${chatDetail() === "concise"}">Concise</button><button type="button" data-det="detailed" aria-pressed="${chatDetail() === "detailed"}">Detailed</button></div></div>
     ${settings ? `<form class="cset" id="chatSetForm">
-        <label for="anthKey">Anthropic API key</label>
+        <label>Answers from</label>
+        <div class="seg" role="radiogroup" aria-label="Answer engine" id="engSeg">
+          <button type="button" data-eng="local" aria-pressed="${!ai}">FMP data (built-in)</button>
+          <button type="button" data-eng="claude" aria-pressed="${ai}">Claude AI (optional)</button></div>
+        <p class="note">Built-in answers are written from the FMP data in the monitor and need no extra key. Claude handles free-form questions and needs your own Anthropic API key.</p>
+        <label for="anthKey">Anthropic API key (Claude only)</label>
         <input id="anthKey" type="password" placeholder="sk-ant-…" value="${esc(key)}" autocomplete="off" spellcheck="false">
         <label for="chatModelSel">Model</label>
         <select id="chatModelSel">${Object.entries(CHAT_MODELS).map(([k, v]) => `<option value="${k}" ${k === chatModel() ? "selected" : ""}>${esc(v)}</option>`).join("")}</select>
-        <p class="note">The chat calls Claude directly from this page with your own key from console.anthropic.com, billed to your Anthropic account. The key is saved only in this browser.</p>
+        <p class="note">Key from console.anthropic.com, billed to your Anthropic account and saved only in this browser.</p>
         <button class="btn" type="submit">Save</button></form>` : ""}
     <div class="clog" id="chatLog" aria-live="polite">
       ${view.length ? view.map((t, i) => `<div class="turn ${t.role}" data-turn="${i}">${turnHtml(t)}</div>`).join("") :
-        `<div class="cempty"><p>Ask anything about ${d ? esc(d.profile.companyName || d.symbol) : "the company"}: its results, segments, forecasts, price reactions or how it compares with peers. Answers use the data loaded in the monitor and can fetch more.</p>
-          <div class="csugg">${chatSuggestions().map(s => `<button type="button" data-ask="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`}
+        `<div class="cempty"><p>Ask about ${d ? esc(d.profile.companyName || d.symbol) : "the company"}, or compare it with any ticker, e.g. "vs MSFT".</p>
+          <div class="csugg">${chatSuggestions().map(([lab, q]) => `<button type="button" data-ask="${esc(lab)}" data-q="${esc(q)}">${esc(lab)}</button>`).join("")}</div></div>`}
     </div>
-    <form class="cin" id="chatForm"><textarea id="chatInput" rows="1" placeholder="${key ? "Ask a question…" : "Add your Anthropic API key in Settings to start"}" ${key ? "" : "disabled"} aria-label="Ask a question"></textarea>
-      ${CHAT.busy ? `<button class="btn ghost" type="button" id="chatStop">Stop</button>` : `<button class="btn" type="submit" ${key ? "" : "disabled"}>Ask</button>`}</form>`;
+    <form class="cin" id="chatForm"><textarea id="chatInput" rows="1" placeholder="Ask about ${d ? esc(d.symbol) : "this company"}…" aria-label="Ask a question"></textarea>
+      ${CHAT.busy && CHAT.abort ? `<button class="btn ghost" type="button" id="chatStop">Stop</button>` : `<button class="btn" type="submit" ${CHAT.busy ? "disabled" : ""}>Ask</button>`}</form>`;
   const log = document.getElementById("chatLog"); log.scrollTop = log.scrollHeight;
   const inp = document.getElementById("chatInput");
   const grow = () => { inp.style.height = "auto"; inp.style.height = Math.min(160, inp.scrollHeight) + "px"; };
   inp.addEventListener("input", grow);
   inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("chatForm").requestSubmit(); } });
-  document.getElementById("chatForm").addEventListener("submit", e => { e.preventDefault(); const v = inp.value; if (!v.trim() || CHAT.busy) return; inp.value = ""; askClaude(v); });
+  document.getElementById("chatForm").addEventListener("submit", e => { e.preventDefault(); const v = inp.value; if (!v.trim() || CHAT.busy) return; inp.value = ""; askQuestion(v); });
   const stop = document.getElementById("chatStop"); if (stop) stop.addEventListener("click", () => CHAT.abort && CHAT.abort.abort());
-  pane.querySelectorAll("[data-ask]").forEach(b => b.addEventListener("click", () => askClaude(b.dataset.ask)));
+  pane.querySelectorAll("[data-ask]").forEach(b => b.addEventListener("click", () => askQuestion(b.dataset.q || b.dataset.ask)));
+  pane.querySelectorAll("[data-det]").forEach(b => b.addEventListener("click", () => { store.set("chatDetail", b.dataset.det); (CHAT.view || []).forEach(t => t.expanded = false); renderChat(); }));
+  pane.querySelectorAll("[data-eng]").forEach(b => b.addEventListener("click", () => { pane.querySelectorAll("[data-eng]").forEach(x => x.setAttribute("aria-pressed", String(x === b))); STATE.engPick = b.dataset.eng; }));
   document.getElementById("chatClose").addEventListener("click", () => { STATE.chatOpen = false; renderChat(); document.getElementById("chatFab").focus(); });
-  document.getElementById("chatSet").addEventListener("click", () => { STATE.chatSettings = !settings || !key ? !STATE.chatSettings : false; if (!key) STATE.chatSettings = true; renderChat(); });
+  document.getElementById("chatSet").addEventListener("click", () => { STATE.chatSettings = !STATE.chatSettings; STATE.engPick = null; renderChat(); });
   const clr = document.getElementById("chatClear"); if (clr) clr.addEventListener("click", () => { if (CHAT.abort) CHAT.abort.abort(); CHAT.msgs = []; CHAT.view = []; renderChat(); });
   const sf = document.getElementById("chatSetForm");
-  if (sf) sf.addEventListener("submit", e => { e.preventDefault(); store.set("anthropicKey", document.getElementById("anthKey").value.trim()); store.set("chatModel", document.getElementById("chatModelSel").value); STATE.chatSettings = false; renderChat(); });
-  if (key && !settings && !CHAT.busy) inp.focus({ preventScroll: true });
+  if (sf) sf.addEventListener("submit", e => {
+    e.preventDefault();
+    const k = document.getElementById("anthKey").value.trim(), eng = STATE.engPick || (ai ? "claude" : "local");
+    store.set("anthropicKey", k); store.set("chatModel", document.getElementById("chatModelSel").value);
+    store.set("chatEngine", eng === "claude" && k ? "claude" : "local");
+    STATE.chatSettings = false; STATE.engPick = null; renderChat();
+  });
+  if (!settings && !CHAT.busy) inp.focus({ preventScroll: true });
+}
+
+/* ============ built-in answer engine: answers from the FMP data, no AI key needed ============ */
+const NOT_TICKERS = new Set(["I", "A", "AN", "THE", "QOQ", "YOY", "EPS", "FCF", "EV", "PE", "TTM", "US", "UK", "AI", "CEO", "CFO", "FY", "OK", "EBITDA", "GAAP", "SGA", "RD", "IS", "IT", "VS", "AND", "OR", "TO", "OF", "IN", "ON", "FOR", "ME", "MY", "DO", "DID", "HOW", "WHAT", "WHY", "Q", "PT", "ROIC", "ROE", "OK", "USD", "GBP", "EUR", "TAM", "YTD", "LTM", "NTM", "EST", "ETF"]);
+const INTENTS = [
+  ["reaction", /(react|reaction|traded|trade around|share price|stock (move|do|did|react)|price (move|action|reaction)|sold off|sell[- ]?off|rall(y|ied)|how did (the )?(stock|shares))/],
+  ["valuation", /(valu|cheap|expensive|multiple|p\/e|\bpe\b|ev\/|premium|discount|\brich\b|overvalued|undervalued|price target|upside|downside|re-?rate)/],
+  ["earnings", /(earnings|estimate|consensus|beat|miss|next quarter|print|forecast|expect|guidance|watch|upcoming|results day|report)/],
+  ["peers", /(peer|compet|compare|versus|\bvs\.?\b|relative|against|rank|sector)/],
+  ["margins", /(margin|profitab|cost|opex|expense|operating leverage|gross profit|operating income)/],
+  ["growth", /(grow|driv|revenue|sales|top ?line|segment|business unit|product|region|geograph|where .*(grow|com))/],
+  ["balance", /(balance sheet|debt|net cash|cash position|liquidity|leverage|inventory|receivable|working capital|solven)/],
+  ["cash", /(cash ?flow|\bfcf\b|free cash|buyback|repurchase|dividend|capital return|capex|shareholder return)/],
+  ["eps", /(\beps\b|earnings per share|net income|bottom line|profit\b)/],
+  ["summary", /(summar|overview|tell me about|snapshot|key points|tl;?dr|thesis|story|bull|bear|risk)/]
+];
+
+function detectIntents(q) {
+  const s = q.toLowerCase(), hits = INTENTS.filter(([, re]) => re.test(s)).map(([k]) => k);
+  let out = hits;
+  if (out.includes("reaction")) out = out.filter(k => k !== "earnings");
+  if (out.includes("valuation") && out.includes("peers")) out = out.filter(k => k !== "peers");
+  if (out.includes("peers") && (out.includes("margins") || out.includes("growth"))) out = out.filter(k => k !== "margins" && k !== "growth");
+  return out.slice(0, 2);
+}
+function detectTickers(q, d) {
+  const known = new Set([...(STATE.peerData && STATE.peerData.for === d.symbol ? STATE.peerData.peers.map(p => p.sym) : []), ...(STATE.peers || [])]);
+  const out = new Set();
+  (q.match(/\b[A-Z]{1,5}(\.[A-Z]{1,3})?\b/g) || []).forEach(t => { if (!NOT_TICKERS.has(t) && t !== d.symbol) out.add(t); });
+  q.split(/[^A-Za-z.]+/).forEach(t => { const u = t.toUpperCase(); if (known.has(u)) out.add(u); });
+  return [...out].slice(0, 4);
+}
+const detectMode = q => /yoy|year[- ]on[- ]year|year[- ]over[- ]year|vs last year|annual/i.test(q) ? "yoy" : /qoq|quarter[- ]on[- ]quarter|sequential|vs last quarter/i.test(q) ? "qoq" : MODE();
+
+const signed = (v, cur) => isNum(v) ? money(v, cur).replace(/^(?!−)/, v > 0 ? "+" : "") : "—";
+const tbl = (head, rows) => `<div class="tbl"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+const ul = items => items.filter(Boolean).length ? `<ul>${items.filter(Boolean).map(x => `<li>${x}</li>`).join("")}</ul>` : "";
+const h = t => `<h5>${t}</h5>`;
+const tone = v => `<span class="${cls(v)}">${pct(v)}</span>`;
+
+function ansGrowth(d, m) {
+  const cur = d.currency, q = d.inc, n = q.length, L = q[n - 1], P = q[n - 2], w = m === "qoq" ? "QoQ" : "YoY";
+  const yi = yearAgoIdx(q, n - 1), g = m === "qoq" ? L.revQoQ : L.revYoY;
+  const seasonal = yi >= 1 ? growth(q[yi].revenue, q[yi - 1].revenue) : null;
+  let html = `<p><b>${esc(d.symbol)} revenue ${pct(g)} ${w}</b> in ${esc(L.label)} to ${money(L.revenue, cur)} (${m === "qoq" ? `${pct(L.revYoY)} YoY` : `${pct(L.revQoQ)} QoQ`}).`;
+  if (m === "qoq" && isNum(seasonal)) html += ` The same quarter last year moved ${pct(seasonal)}, so this is ${Math.abs(L.revQoQ - seasonal) < 0.015 ? "in line with normal seasonality" : L.revQoQ > seasonal ? "<b>better than</b> the usual seasonal pattern" : "<b>weaker than</b> the usual seasonal pattern"}.`;
+  if (m === "yoy" && P && isNum(P.revYoY)) html += ` Growth is ${Math.abs(L.revYoY - P.revYoY) < 0.01 ? "steady" : L.revYoY > P.revYoY ? "<b>accelerating</b>" : "<b>slowing</b>"} from ${pct(P.revYoY)} in ${esc(P.label)}.`;
+  html += `</p>`;
+  const charts = [];
+  const segBlock = (seg, title) => {
+    const sa = segmentAnalysis(seg, m); if (!sa) return "";
+    const items = sa.items.filter(i => isNum(i.delta)).sort((a, b) => b.delta - a.delta);
+    const note = sa.eff === "fy" ? ` <span class="muted">(annual data: ${esc(sa.cur.label)} vs ${esc(sa.prev.label)})</span>` : ` <span class="muted">(${esc(sa.cur.label)} vs ${esc(sa.prev.label)})</span>`;
+    const rows = items.map(i => [esc(i.name), money(i.cur, cur), tone(i.chg), `<span class="${cls(i.contribPP)}">${pp(i.contribPP)}</span>`, pctPlain(i.share)]);
+    const lead = sa.dTot >= 0 ? items[0] : items[items.length - 1];
+    const lines = [];
+    if (lead) lines.push(sa.dTot >= 0 ? `<b>${esc(lead.name)}</b> is the biggest driver: ${signed(lead.delta, cur)} (${pct(lead.chg)}), ${pp(lead.contribPP)} of the ${pct(sa.totGrowth)} total.` : `<b>${esc(lead.name)}</b> is the biggest drag: ${signed(lead.delta, cur)} (${pct(lead.chg)}).`);
+    const fast = items.filter(i => isNum(i.share) && i.share >= 0.03 && isNum(i.chg)).sort((a, b) => b.chg - a.chg)[0];
+    if (fast && fast !== lead) lines.push(`Fastest grower: ${esc(fast.name)} ${pct(fast.chg)}.`);
+    const dec = items.filter(i => isNum(i.chg) && i.chg < 0 && i !== lead);
+    if (dec.length) lines.push(`Declining: ${dec.map(i => `${esc(i.name)} ${pct(i.chg)}`).join(", ")}.`);
+    if (!charts.length && items.length > 1) charts.push({ type: "bar", title: `${title}: % change ${sa.cmpLabel}`, labels: items.map(i => i.name.length > 14 ? i.name.slice(0, 13) + "…" : i.name), series: [{ name: "% change", values: items.map(i => isNum(i.chg) ? i.chg : null) }], format: "pct" });
+    return h(`${title}${note}`) + ul(lines) + tbl(["", sa.cur.label, `% ${sa.cmpLabel}`, "Contrib.", "Share"], rows);
+  };
+  html += segBlock(d.seg, "By business unit") + segBlock(d.geo, "By region");
+  if (!d.seg && !d.geo) html += `<p class="muted">No segment breakdown is available for ${esc(d.symbol)} from FMP.</p>`;
+  return { html, charts };
+}
+
+function ansMargins(d, m) {
+  const cur = d.currency, q = d.inc, n = q.length, L = q[n - 1], P = q[n - 2], yi = yearAgoIdx(q, n - 1), Y = yi >= 0 ? q[yi] : null;
+  const B = m === "qoq" ? P : Y, w = m === "qoq" ? "QoQ" : "YoY";
+  const dGm = B && isNum(L.gm) && isNum(B.gm) ? L.gm - B.gm : null, dOm = B ? L.om - B.om : null, dNm = B ? L.nm - B.nm : null;
+  let html = `<p><b>Operating margin ${pctPlain(L.om)}</b> in ${esc(L.label)}, ${bps(dOm)} ${w}. Gross ${pctPlain(L.grossProfit ? L.gm : null)} (${bps(dGm)}), net ${pctPlain(L.nm)} (${bps(dNm)}).</p>`;
+  const lines = [];
+  if (isNum(dGm) && isNum(dOm) && L.grossProfit) lines.push(Math.abs(dGm) > Math.abs(dOm) * 0.6 ? `Most of the move is at the gross line, so pricing, mix and product costs explain it.` : `Most of the move is below gross profit, in operating costs.`);
+  if (B) {
+    const og = growth(L.operatingExpenses, B.operatingExpenses), rg = growth(L.revenue, B.revenue);
+    if (isNum(og) && isNum(rg)) lines.push(`Operating expenses ${pct(og)} vs revenue ${pct(rg)} ${w}: ${og < rg - 0.01 ? "<b>operating leverage</b>" : og > rg + 0.01 ? "<b>costs outpacing sales</b>" : "costs in line with sales"}.`);
+    const dRev = L.revenue - B.revenue, dOI = L.operatingIncome - B.operatingIncome;
+    if (Math.abs(dRev) > 0 && isNum(dOI)) lines.push(`Incremental operating margin ${pctPlain(dOI / dRev, 0)} (each extra dollar of revenue ${dRev > 0 ? "added" : "removed"} ${(dOI / dRev).toFixed(2)} of operating profit).`);
+  }
+  const trend = q.slice(-4).map(r => r.om).filter(isNum);
+  if (trend.length >= 3) { const up = trend[trend.length - 1] - trend[0]; lines.push(`Over the last 4 quarters operating margin has moved ${bps(up)}${Math.abs(up) < 0.005 ? " (broadly flat)" : up > 0 ? " (trending up)" : " (trending down)"}.`); }
+  if (d.fc && isNum(d.fc.mOm)) lines.push(`On the tool's simple model, next quarter's operating margin would be about ${pctPlain(d.fc.mOm)}.`);
+  html += ul(lines);
+  const rows = q.slice(-5).map(r => [esc(r.label), pctPlain(r.grossProfit ? r.gm : null), pctPlain(r.om), pctPlain(r.nm), pctPlain(r.researchAndDevelopmentExpenses ? r.rdPct : null), pctPlain(r.sellingGeneralAndAdministrativeExpenses ? r.sgaPct : null)]);
+  html += tbl(["Quarter", "Gross", "Operating", "Net", "R&amp;D % rev", "SG&amp;A % rev"], rows);
+  const s8 = q.slice(-8);
+  return { html, charts: [{ type: "line", title: "Margins by quarter", labels: s8.map(r => r.label), series: [{ name: "Gross", values: s8.map(r => r.grossProfit ? r.gm : null) }, { name: "Operating", values: s8.map(r => r.om) }, { name: "Net", values: s8.map(r => r.nm) }], format: "pct" }] };
+}
+
+async function withPeers(d, turn, extra) {
+  if (!(STATE.peerData && STATE.peerData.for === d.symbol)) { turn.status = "Loading peer group from FMP…"; renderChatTurn(turn); await ensurePeerData(); }
+  const pd = STATE.peerData; if (!pd) throw new Error("Couldn't load peer data.");
+  let peers = [...pd.peers];
+  for (const t of extra || []) {
+    if (peers.some(p => p.sym === t)) continue;
+    turn.tools.push(`Fetched ${t} from FMP`); turn.status = `Fetching ${t}…`; renderChatTurn(turn);
+    try { peers.push(await peerMetrics(t)); } catch (e) { turn.tools.push(`${t} not found`); }
+  }
+  return { me: pd.me, peers };
+}
+
+async function ansValuation(d, m, turn, extra) {
+  const { me, peers } = await withPeers(d, turn, extra), cur = d.currency;
+  const set = extra && extra.length ? peers.filter(p => extra.includes(p.sym)) : peers;
+  const mv = get => median(set.map(get).filter(multOk));
+  const metrics = [["P/E (TTM)", x => x.pe], ["Forward P/E", x => x.fpe], ["EV/Sales", x => x.evS], ["EV/EBITDA", x => x.evE], ["P/FCF", x => x.pfcf]];
+  const rows = metrics.map(([lab, get]) => { const v = get(me), mm = mv(get); return [lab, mult(v), mult(mm), multOk(v) && isNum(mm) ? `<span class="${v > mm ? "dn" : "up"}">${pct(v / mm - 1, 0)} ${v > mm ? "premium" : "discount"}</span>` : "—"]; });
+  const prem = median(metrics.map(([, get]) => { const v = get(me), mm = mv(get); return multOk(v) && isNum(mm) ? v / mm - 1 : null; }));
+  const g = x => x.revYoY, om = x => x.omT;
+  const gM = median(set.map(g)), omM = median(set.map(om));
+  const faster = isNum(g(me)) && isNum(gM) ? g(me) > gM : null, richer = isNum(om(me)) && isNum(omM) ? om(me) > omM : null;
+  let verdict = !isNum(prem) ? "There isn't enough valuation data to compare." :
+    prem > 0.15 ? `<b>${esc(d.symbol)} trades at a premium</b> (a median ${pct(prem, 0)} across multiples) ${faster && richer ? "that faster growth and higher margins support." : faster || richer ? `that is partly backed by ${faster ? "faster growth" : "higher margins"}.` : "that growth and margins don't obviously justify."}` :
+    prem < -0.15 ? `<b>${esc(d.symbol)} trades at a discount</b> (a median ${pct(prem, 0)} across multiples) ${faster ? "despite faster growth, which can point to value or a market concern worth checking." : "consistent with slower growth."}` :
+    `<b>${esc(d.symbol)} is valued broadly in line with peers</b> (a median ${pct(prem, 0)} across multiples).`;
+  let html = `<p>${verdict}</p>` + ul([
+    isNum(g(me)) && isNum(gM) ? `Revenue growth ${pct(g(me))} YoY vs peer median ${pct(gM)}.` : "",
+    isNum(om(me)) && isNum(omM) ? `TTM operating margin ${pctPlain(om(me))} vs median ${pctPlain(omM)} (${pp(om(me) - omM)}).` : "",
+    isNum(me.fcfY) ? `FCF yield ${pctPlain(me.fcfY)} vs median ${pctPlain(median(set.map(x => x.fcfY)))}.` : "",
+    d.fc && d.fc.pt ? `Analyst price target ${d.fc.pt.targetConsensus.toFixed(2)}, ${pct(d.fc.pt.upside)} from the current price (range ${d.fc.pt.targetLow}–${d.fc.pt.targetHigh}).` : ""
+  ]) + tbl(["Multiple", esc(d.symbol), `Peer median (${set.length})`, "vs median"], rows) + `<p class="muted">Peers: ${set.map(p => esc(p.sym)).join(", ")}. Edit the group on the Peers &amp; valuation tab.</p>`;
+  const all = [me, ...set];
+  return { html, charts: [{ type: "bar", title: "EV/EBITDA vs peers", labels: all.map(x => x.sym), series: [{ name: "EV/EBITDA", values: all.map(x => multOk(x.evE) ? x.evE : null) }], format: "multiple", highlight: d.symbol }] };
+}
+
+async function ansPeers(d, m, turn, extra, focus) {
+  const { me, peers } = await withPeers(d, turn, extra);
+  const set = extra && extra.length ? peers.filter(p => extra.includes(p.sym)) : peers, all = [me, ...set];
+  const w = m === "qoq" ? "QoQ" : "YoY", g = x => m === "qoq" ? x.revQoQ : x.revYoY;
+  const rank = (get, hi = true) => { const a = all.filter(x => isNum(get(x))).sort((x, y) => hi ? get(y) - get(x) : get(x) - get(y)); const i = a.indexOf(me); return i >= 0 ? `${i + 1} of ${a.length}` : "—"; };
+  const ref = set.length === 1 ? esc(set[0].sym) : "median";
+  const lines = [
+    isNum(g(me)) ? `Revenue growth ${pct(g(me))} ${w}, ranking <b>${rank(g)}</b> (${ref} ${pct(median(set.map(g)))}).${m === "qoq" ? " Fiscal calendars differ, so QoQ can reflect seasonality." : ""}` : "",
+    isNum(me.omT) ? `TTM operating margin ${pctPlain(me.omT)}, ranking <b>${rank(x => x.omT)}</b> (${ref} ${pctPlain(median(set.map(x => x.omT)))}).` : "",
+    isNum(me.gmT) ? `TTM gross margin ${pctPlain(me.gmT)} vs ${ref} ${pctPlain(median(set.map(x => x.gmT)))}.` : "",
+    isNum(me.fpe) || isNum(me.evE) ? `Valuation: EV/EBITDA ${mult(me.evE)} (rank ${rank(x => multOk(x.evE) ? x.evE : null, false)} cheapest), forward P/E ${mult(me.fpe)}.` : ""
+  ];
+  const ord = focus === "margins" ? [lines[1], lines[2], lines[0], lines[3]] : lines;
+  const rows = all.map(x => [`${x === me ? "<b>" : ""}${esc(x.sym)}${x === me ? "</b>" : ""}`, tone(g(x)), pctPlain(x.gmT), pctPlain(x.omT), pctPlain(x.nmT), mult(x.evE), mult(x.fpe)]);
+  if (set.length > 1) rows.push(["Median (peers)", pct(median(set.map(g))), pctPlain(median(set.map(x => x.gmT))), pctPlain(median(set.map(x => x.omT))), pctPlain(median(set.map(x => x.nmT))), mult(median(set.map(x => x.evE).filter(multOk))), mult(median(set.map(x => x.fpe).filter(multOk)))]);
+  const html = `<p><b>${esc(d.symbol)} vs ${set.map(p => esc(p.sym)).join(", ")}</b></p>` + ul(ord) + tbl(["", `Rev ${w}`, "Gross", "Op.", "Net", "EV/EBITDA", "Fwd P/E"], rows) + `<p class="muted">Margins are TTM; growth is each company's latest reported quarter.</p>`;
+  const chart = focus === "growth" ? { type: "bar", title: `Revenue growth ${w}`, labels: all.map(x => x.sym), series: [{ name: "Growth", values: all.map(g) }], format: "pct", highlight: d.symbol }
+    : { type: "bar", title: "TTM operating margin", labels: all.map(x => x.sym), series: [{ name: "Operating margin", values: all.map(x => x.omT) }], format: "pct", highlight: d.symbol };
+  return { html, charts: [chart] };
+}
+
+function ansEarnings(d, m) {
+  const f = d.fc, cur = d.currency; if (!f) return { html: `<p>No estimate data is available for ${esc(d.symbol)}.</p>` };
+  const lines = [];
+  let lead;
+  if (isNum(f.cRev)) lead = `<p><b>${esc(f.label)} reports ${f.date ? esc(fmtDate(f.date)) : "next"}.</b> Consensus expects revenue of <b>${money(f.cRev, cur)}</b> (${pct(f.cRevQoQ)} QoQ, ${pct(f.cRevYoY)} YoY)${isNum(f.cEps) ? ` and EPS of <b>${f.cEps.toFixed(2)}</b> (${pct(f.cEpsYoY)} YoY)` : ""}.</p>`;
+  else lead = `<p>There's no consensus estimate for ${esc(f.label)} in the FMP data. The tool's model projects ${money(f.mRev, cur)} (${pct(f.mRevQoQ)} QoQ).</p>`;
+  if (isNum(f.cRevYoY) && isNum(f.L.revYoY)) lines.push(`That implies YoY growth ${Math.abs(f.cRevYoY - f.L.revYoY) < 0.01 ? "steady at" : f.cRevYoY > f.L.revYoY ? "<b>accelerating</b> from" : "<b>slowing</b> from"} ${pct(f.L.revYoY)} last quarter.`);
+  if (isNum(f.mRev) && isNum(f.cRev)) lines.push(`The tool's seasonal model lands at ${money(f.mRev, cur)}, ${pct(f.modelVsCons)} vs consensus, ${Math.abs(f.modelVsCons) < 0.015 ? "so consensus looks reasonable on history" : f.modelVsCons > 0 ? "so consensus looks <b>beatable</b> on recent trends" : "so consensus looks <b>demanding</b> on recent trends"}.`);
+  if (f.revTrack) lines.push(`Revenue has beaten in <b>${f.revTrack.beats} of the last ${f.revTrack.n}</b> reports (average surprise ${pct(f.revTrack.avg)})${isNum(f.cRev) && isNum(f.revTrack.avg) ? `; a typical beat would mean about ${money(f.cRev * (1 + f.revTrack.avg), cur)}` : ""}.`);
+  if (f.epsTrack) lines.push(`EPS has beaten ${f.epsTrack.beats} of ${f.epsTrack.n} (average ${pct(f.epsTrack.avg)}).`);
+  // what to watch
+  const watch = [];
+  const sa = segmentAnalysis(d.seg, "yoy") || segmentAnalysis(d.seg, "qoq");
+  if (sa) {
+    const it = sa.items.filter(i => isNum(i.chg) && isNum(i.share) && i.share >= 0.05);
+    const best = [...it].sort((a, b) => b.chg - a.chg)[0], worst = [...it].sort((a, b) => a.chg - b.chg)[0];
+    if (best) watch.push(`Whether <b>${esc(best.name)}</b> keeps its momentum (${pct(best.chg)} ${sa.cmpLabel}, ${pctPlain(best.share)} of revenue).`);
+    if (worst && worst !== best && worst.chg < 0.02) watch.push(`Any stabilisation in <b>${esc(worst.name)}</b> (${pct(worst.chg)} ${sa.cmpLabel}).`);
+  }
+  const L = f.L, yi = yearAgoIdx(d.inc, d.inc.length - 1), Y = yi >= 0 ? d.inc[yi] : null;
+  if (Y && isNum(L.om) && isNum(Y.om)) watch.push(`Operating margin: ${pctPlain(L.om)} last quarter (${bps(L.om - Y.om)} YoY)${isNum(f.mOm) ? `, model points to about ${pctPlain(f.mOm)}` : ""}.`);
+  if (f.ya && isNum(f.cRevQoQ) && yi >= 0) { const sq = d.inc.find(r => r.label === f.ya.label), si = d.inc.indexOf(sq); const s2 = si >= 1 ? growth(sq.revenue, d.inc[si - 1].revenue) : null; if (isNum(s2)) watch.push(`Seasonality: consensus implies ${pct(f.cRevQoQ)} QoQ vs ${pct(s2)} in the same quarter last year.`); }
+  watch.push(`Guidance for the following quarter, which FMP doesn't carry, often moves the stock more than the print itself.`);
+  let html = lead + ul(lines) + h("What to watch") + ul(watch);
+  if (f.annual && f.annual.length) html += h("Full-year consensus") + tbl(["", ...f.annual.map(a => esc(a.label))], [["Revenue", ...f.annual.map(a => money(a.rev, cur))], ["Growth", ...f.annual.map(a => tone(a.revG))], ["EPS", ...f.annual.map(a => isNum(a.eps) ? a.eps.toFixed(2) : "—")], ["Fwd P/E", ...f.annual.map(a => mult(a.fpe))]]);
+  const hist = f.hist.filter(x => isNum(x.estRev));
+  const labels = [...hist.map(x => x.label), ...f.ups.slice(0, 1).map(u => u.label + "E")];
+  return { html, charts: labels.length > 1 ? [{ type: "bar", title: "Revenue: actual vs consensus", labels, series: [{ name: "Actual", values: [...hist.map(x => x.rev), null] }, { name: "Consensus", values: [...hist.map(x => x.estRev), ...f.ups.slice(0, 1).map(u => u.revenueEstimated)] }], format: "money" }] : [] };
+}
+
+async function ansReaction(d, m, turn, q) {
+  const f = d.fc; if (!f || !f.past.length) return { html: `<p>No past earnings dates are available for ${esc(d.symbol)}.</p>` };
+  const nm = +(q.match(/\b(\d{1,2})\b/) || [])[1] || 4, reps = f.past.slice(-Math.min(8, Math.max(1, nm)));
+  turn.status = "Fetching daily prices from FMP…"; renderChatTurn(turn);
+  const from = addDays(reps[0].date, -35), to = [addDays(reps[reps.length - 1].date, 35), todayISO()].sort()[0];
+  const px = await prices(d.symbol, from, to); turn.tools.push(`Fetched ${d.symbol} daily OHLC`);
+  const res = reps.map(e => {
+    const before = px.filter(r => r.date < e.date), after = px.filter(r => r.date > e.date);
+    const c0 = before[before.length - 1], a1 = after[0];
+    const pre = px.filter(r => r.date >= addDays(e.date, -30) && r.date < e.date)[0];
+    const post = px.filter(r => r.date > e.date && r.date <= addDays(e.date, 30)); const pEnd = post[post.length - 1];
+    return { lab: e.rowIdx >= 0 ? d.inc[e.rowIdx].label : fmtDate(e.date), date: e.date, revS: e.revS, epsS: e.epsS, react: c0 && a1 ? growth(a1.close, c0.close) : null, run: pre && c0 ? growth(c0.close, pre.close) : null, drift: a1 && pEnd && pEnd !== a1 ? growth(pEnd.close, a1.close) : null };
+  });
+  const rx = res.filter(r => isNum(r.react)), avgAbs = mean(rx.map(r => Math.abs(r.react)));
+  const ups = rx.filter(r => r.react > 0).length, beatDown = rx.filter(r => isNum(r.revS) && r.revS > 0 && r.react < 0);
+  const big = [...rx].sort((a, b) => Math.abs(b.react) - Math.abs(a.react))[0];
+  const html = `<p><b>${esc(d.symbol)} rose after ${ups} of the last ${rx.length} reports</b>, with an average move of ±${pctPlain(avgAbs)} (close before the report to the close after).</p>` + ul([
+    big ? `Biggest reaction: ${esc(big.lab)} at ${tone(big.react)}${isNum(big.revS) ? ` on a ${pct(big.revS)} revenue ${big.revS >= 0 ? "beat" : "miss"}` : ""}.` : "",
+    beatDown.length ? `Beat but sold off: ${beatDown.map(r => `${esc(r.lab)} (${pct(r.react)})`).join(", ")}, so beats alone haven't been enough.` : `Beats have generally been rewarded.`,
+    isNum(mean(rx.map(r => r.drift))) ? `Average 30-day drift after the report: ${tone(mean(rx.map(r => r.drift)))}.` : ""
+  ]) + tbl(["Quarter", "Reaction", "Rev surprise", "EPS surprise", "Drift 30d", "Run-up 30d", "Reported"], res.slice().reverse().map(r => [esc(r.lab), `<b>${tone(r.react)}</b>`, tone(r.revS), tone(r.epsS), tone(r.drift), tone(r.run), esc(shortDate(r.date))]))
+    + `<p class="muted">Click any row in Estimates vs actuals to see the candlestick chart around that report.</p>`;
+  return { html, charts: [{ type: "bar", title: "Share-price reaction to earnings", labels: res.map(r => r.lab), series: [{ name: "Reaction", values: res.map(r => r.react) }], format: "pct" }] };
+}
+
+function ansBalance(d) {
+  const cur = d.currency, b = d.bs; if (!b.length) return { html: "<p>No balance sheet data.</p>" };
+  const L = b[b.length - 1], Y = b.length >= 5 ? b[b.length - 5] : b[0];
+  const nd = L.netDebt, cr = ratio(L.totalCurrentAssets, L.totalCurrentLiabilities), de = ratio(L.totalDebt, L.totalStockholdersEquity);
+  const ebitda = sum(d.inc.slice(-4).map(r => r.ebitda));
+  const html = `<p><b>${isNum(nd) ? (nd < 0 ? `Net cash of ${money(-nd, cur)}` : `Net debt of ${money(nd, cur)}`) : "Net debt unavailable"}</b> at ${esc(L.label)}${isNum(Y.netDebt) ? `, versus ${Y.netDebt < 0 ? "net cash " + money(-Y.netDebt, cur) : "net debt " + money(Y.netDebt, cur)} a year earlier` : ""}.</p>` + ul([
+    isNum(ebitda) && isNum(nd) && ebitda > 0 ? `Net debt / TTM EBITDA ${(nd / ebitda).toFixed(2)}×.` : "",
+    isNum(cr) ? `Current ratio ${cr.toFixed(2)}${cr < 1 ? " (below 1, normal for companies with strong cash generation, but worth noting)" : ""}.` : "",
+    isNum(de) ? `Debt / equity ${de.toFixed(2)}×${L.totalStockholdersEquity < 0 ? " (equity is negative, usually from buybacks)" : ""}.` : "",
+    isNum(growth(L.inventory, Y.inventory)) && L.inventory > 0 ? `Inventory ${pct(growth(L.inventory, Y.inventory))} YoY vs revenue ${pct(d.inc[d.inc.length - 1].revYoY)}.` : "",
+    isNum(growth(L.netReceivables, Y.netReceivables)) ? `Receivables ${pct(growth(L.netReceivables, Y.netReceivables))} YoY.` : ""
+  ]) + tbl(["", esc(L.label), esc(Y.label), "Change"], [["Cash &amp; ST investments", L.cashAndShortTermInvestments, Y.cashAndShortTermInvestments], ["Total debt", L.totalDebt, Y.totalDebt], ["Net debt", L.netDebt, Y.netDebt], ["Total assets", L.totalAssets, Y.totalAssets], ["Equity", L.totalStockholdersEquity, Y.totalStockholdersEquity]].map(([k, a, c]) => [k, money(a, cur), money(c, cur), signed(isNum(a) && isNum(c) ? a - c : null, cur)]));
+  const s = b.slice(-8);
+  return { html, charts: [{ type: "bar", title: "Cash vs total debt", labels: s.map(r => r.label), series: [{ name: "Cash & ST inv.", values: s.map(r => r.cashAndShortTermInvestments) }, { name: "Total debt", values: s.map(r => r.totalDebt) }], format: "money" }] };
+}
+
+function ansCash(d) {
+  const cur = d.currency, c = d.cf; if (c.length < 4) return { html: "<p>Not enough cash flow history.</p>" };
+  const t = c.slice(-4), tp = c.slice(-8, -4);
+  const S = (arr, k) => sum(arr.map(x => n0(x[k])));
+  const fcf = S(t, "freeCashFlow"), fcfP = tp.length === 4 ? S(tp, "freeCashFlow") : null, ocf = S(t, "operatingCashFlow"), capex = Math.abs(S(t, "capitalExpenditure"));
+  const rev = sum(d.inc.slice(-4).map(r => r.revenue)), ni = sum(d.inc.slice(-4).map(r => r.netIncome));
+  const buy = Math.abs(S(t, "commonStockRepurchased")), div = Math.abs(S(t, "commonDividendsPaid")), sbc = S(t, "stockBasedCompensation");
+  const html = `<p><b>TTM free cash flow ${money(fcf, cur)}</b>${isNum(fcfP) ? ` (${pct(growth(fcf, fcfP))} vs the prior 12 months)` : ""}, a ${pctPlain(ratio(fcf, rev))} FCF margin.</p>` + ul([
+    isNum(ratio(fcf, ni)) ? `Cash conversion: FCF is ${pctPlain(ratio(fcf, ni), 0)} of net income${ratio(fcf, ni) < 0.8 ? ", weaker than earnings suggest" : ""}.` : "",
+    `Operating cash flow ${money(ocf, cur)}; capex ${money(capex, cur)} (${pctPlain(ratio(capex, rev))} of revenue).`,
+    buy || div ? `Returned ${money(buy + div, cur)} to shareholders: ${money(buy, cur)} buybacks and ${money(div, cur)} dividends (${pctPlain(ratio(buy + div, fcf), 0)} of FCF).` : "",
+    sbc ? `Stock-based compensation ${money(sbc, cur)} (${pctPlain(ratio(sbc, rev))} of revenue), which FCF doesn't deduct.` : ""
+  ]);
+  const s = c.slice(-8);
+  return { html, charts: [{ type: "bar", title: "Free cash flow by quarter", labels: s.map(r => r.label), series: [{ name: "FCF", values: s.map(r => r.freeCashFlow) }], format: "money" }] };
+}
+
+function ansEps(d, m) {
+  const q = d.inc, n = q.length, L = q[n - 1], P = q[n - 2], yi = yearAgoIdx(q, n - 1), Y = yi >= 0 ? q[yi] : null, cur = d.currency;
+  const sh = Y ? growth(L.weightedAverageShsOutDil, Y.weightedAverageShsOutDil) : null;
+  const html = `<p><b>Diluted EPS ${isNum(L.epsDiluted) ? L.epsDiluted.toFixed(2) : "—"}</b> in ${esc(L.label)}: ${pct(Y ? growth(L.epsDiluted, Y.epsDiluted) : null)} YoY, ${pct(growth(L.epsDiluted, P.epsDiluted))} QoQ. Net income ${money(L.netIncome, cur)}, a ${pctPlain(L.nm)} net margin.</p>` + ul([
+    isNum(sh) ? `Diluted share count ${pct(sh)} YoY${sh < -0.005 ? ", so buybacks are lifting EPS growth above net income growth" : ""}.` : "",
+    Y && isNum(L.taxRate) && isNum(Y.taxRate) && Math.abs(L.taxRate - Y.taxRate) > 0.02 ? `Tax rate ${pctPlain(L.taxRate)} vs ${pctPlain(Y.taxRate)} a year ago, which affects the comparison.` : "",
+    d.fc && isNum(d.fc.cEps) ? `Consensus for ${esc(d.fc.label)}: ${d.fc.cEps.toFixed(2)} (${pct(d.fc.cEpsYoY)} YoY).` : ""
+  ]) + tbl(["Quarter", "EPS", "YoY", "Net income", "Net margin"], q.slice(-5).map((r, i, a) => { const j = yearAgoIdx(q, q.indexOf(r)); return [esc(r.label), isNum(r.epsDiluted) ? r.epsDiluted.toFixed(2) : "—", tone(j >= 0 ? growth(r.epsDiluted, q[j].epsDiluted) : null), money(r.netIncome, cur), pctPlain(r.nm)]; }));
+  const s = q.slice(-8);
+  return { html, charts: [{ type: "bar", title: "Diluted EPS by quarter", labels: s.map(r => r.label), series: [{ name: "EPS", values: s.map(r => r.epsDiluted) }], format: "number" }] };
+}
+
+function ansSummary(d) {
+  const html = `<p>${esc(d.ins.verdict)}</p>` + ul(d.ins.list.map(i => `<b>${esc(i.tag.split(" · ")[0])}:</b> ${esc(i.title)}`)) + `<p class="muted">Ask about any of these for the detail, e.g. "margins", "valuation vs peers", "what to watch into the print".</p>`;
+  return { html };
+}
+
+async function answerLocal(q, turn) {
+  const d = STATE.d, m = detectMode(q), extra = detectTickers(q, d);
+  let intents = detectIntents(q);
+  if (!intents.length && extra.length) intents = ["peers"];
+  if (!intents.length && CHAT.lastIntent && q.trim().split(/\s+/).length <= 6) intents = [CHAT.lastIntent];
+  if (!intents.length) intents = ["summary"];
+  CHAT.lastIntent = intents[0];
+  const wantChart = /(chart|plot|graph|visual|show me)/i.test(q);
+  const focus = /margin|profit/i.test(q) ? "margins" : /grow|revenue|sales/i.test(q) ? "growth" : null;
+  const parts = [];
+  for (const it of intents) {
+    turn.status = "Reading FMP data…"; renderChatTurn(turn);
+    if (it === "growth") parts.push(ansGrowth(d, m));
+    else if (it === "margins") parts.push(ansMargins(d, m));
+    else if (it === "valuation") parts.push(await ansValuation(d, m, turn, extra));
+    else if (it === "peers") parts.push(await ansPeers(d, m, turn, extra, focus));
+    else if (it === "earnings") parts.push(ansEarnings(d, m));
+    else if (it === "reaction") parts.push(await ansReaction(d, m, turn, q));
+    else if (it === "balance") parts.push(ansBalance(d));
+    else if (it === "cash") parts.push(ansCash(d));
+    else if (it === "eps") parts.push(ansEps(d, m));
+    else parts.push(ansSummary(d));
+  }
+  turn.html = parts.map(p => p.html).join('<hr class="sep">');
+  // one chart per answer keeps it readable; always show it when asked, otherwise for chart-friendly topics
+  const ch = parts.flatMap(p => p.charts || []);
+  turn.charts = wantChart ? ch.slice(0, 2) : ch.slice(0, 1);
+}
+
+const useClaude = () => !!chatKey() && store.get("chatEngine") === "claude";
+function askQuestion(q) { if (!q || !q.trim() || CHAT.busy) return; return useClaude() ? askClaude(q) : askLocal(q); }
+async function askLocal(question) {
+  const d = STATE.d; if (!d) return;
+  CHAT.busy = true;
+  if (CHAT.forSym !== d.symbol) { CHAT.msgs = []; CHAT.view = []; CHAT.forSym = d.symbol; CHAT.lastIntent = null; }
+  CHAT.view = CHAT.view || [];
+  CHAT.view.push({ role: "user", text: question });
+  const turn = { role: "assistant", text: "", html: "", charts: [], status: "Reading FMP data…", tools: [] };
+  CHAT.view.push(turn); renderChat();
+  try { await answerLocal(question, turn); }
+  catch (e) { turn.error = "Couldn't answer that: " + (e.message || e); }
+  finally { turn.status = ""; CHAT.busy = false; renderChat(); }
 }
 
 /* ============ search / UI wiring ============ */
@@ -2085,6 +2441,7 @@ function renderChat() {
   let rsT = null, lastW = window.innerWidth;
   window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (window.innerWidth !== lastW && STATE.px && STATE.px.open) { lastW = window.innerWidth; renderPx(false); } }, 250); });
   document.getElementById("chatFab").addEventListener("click", () => { STATE.chatOpen = true; renderChat(); });
+  document.getElementById("chatPane").addEventListener("click", e => { const b = e.target.closest("[data-more]"); if (!b) return; const t = CHAT.view[+b.dataset.more]; if (t) { t.expanded = !t.expanded; renderChatTurn(t); } });
   document.addEventListener("keydown", e => { if (e.key === "Escape" && STATE.chatOpen && !CHAT.busy) { STATE.chatOpen = false; renderChat(); } });
   const appEl = document.getElementById("app");
   appEl.addEventListener("click", e => {
