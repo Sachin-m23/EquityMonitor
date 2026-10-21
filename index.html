@@ -265,6 +265,7 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .pxstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
 .pxstat { background: var(--sunk); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
 .pxstat .v { font: 500 22px/1.1 var(--f-mono); }
+.finnote { margin: -24px 0 0; padding: 8px 12px; background: var(--accent-soft); border-radius: 6px; max-width: none; }
 .emhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
 #emove { display: grid; gap: 12px; }
 .emchart { max-width: 760px; width: 100%; }
@@ -450,6 +451,32 @@ const qLabel = r => r.period === "FY" ? "FY" + String(r.fiscalYear).slice(-2) : 
 const n0 = v => isNum(v) ? v : 0;
 
 /* attach derived fields to each income-statement row (ascending order) */
+/* Banks and broker-dealers: FMP's "revenue" is often gross (it includes all interest income), while
+   companies report net revenue = revenue - interest expense. FMP is not consistent quarter to quarter,
+   so each quarter is checked: if revenue exceeds interest income it is treated as gross and interest
+   expense is subtracted. Where FMP's earnings feed has the company's own reported revenue for that
+   quarter (and it is close), that figure is used. Profit uses pre-tax income, the figure banks report. */
+const FIN_IND = /^Banks|Capital Markets|Credit Services|Financial - Conglomerates|Mortgage/i;
+const isFinancial = prof => !!prof && /Financial/i.test(prof.sector || "") && FIN_IND.test(prof.industry || "");
+function normalizeFinancial(rows, earnings) {
+  const er = (Array.isArray(earnings) ? earnings : []).filter(e => e && isNum(e.revenueActual));
+  const sorted = [...rows].sort((a, b) => a.date < b.date ? -1 : 1);
+  sorted.forEach((r, i) => {
+    if (r._finDone) return;
+    r._finDone = true; r.revenueFMP = r.revenue;
+    const gross = isNum(r.revenue) && isNum(r.interestIncome) && isNum(r.interestExpense) && r.interestExpense > 0 && r.revenue > r.interestIncome;
+    let net = gross ? r.revenue - r.interestExpense : r.revenue;
+    const t0 = Date.parse(r.date), t1 = i < sorted.length - 1 ? Date.parse(sorted[i + 1].date) : t0 + 110 * 864e5;
+    const rep = er.find(e => { const t = Date.parse(e.date); return t > t0 && t <= t1; });
+    if (rep && isNum(net) && net > 0 && Math.abs(rep.revenueActual / net - 1) < 0.15) net = rep.revenueActual;
+    r.revenue = net;
+    r.costOfRevenue = null; r.grossProfit = null;
+    if (isNum(r.incomeBeforeTax)) { r.operatingIncome = r.incomeBeforeTax; r.operatingExpenses = isNum(net) ? net - r.incomeBeforeTax : r.operatingExpenses; }
+    r.researchAndDevelopmentExpenses = null;
+    r.isFin = true;
+  });
+  return rows;
+}
 const normFY = r => { if (r && r.fiscalYear != null && r.fiscalYear !== "") r.fiscalYear = +r.fiscalYear; return r; };
 function enrichIncome(rows) {
   rows.forEach(normFY);
@@ -462,6 +489,7 @@ function enrichIncome(rows) {
     r.rdPct = ratio(r.researchAndDevelopmentExpenses, r.revenue);
     r.sgaPct = ratio(r.sellingGeneralAndAdministrativeExpenses, r.revenue);
     r.cogsPct = ratio(r.costOfRevenue, r.revenue);
+    r.eff = ratio(r.operatingExpenses, r.revenue);
     r.opexPct = ratio(r.operatingExpenses, r.revenue);
     const p = rows[i - 1], y = rows[i - 4];
     r.revQoQ = p ? growth(r.revenue, p.revenue) : null;
@@ -556,7 +584,7 @@ function buildInsights(d) {
   /* margins */
   if (Y && isNum(L.om) && isNum(Y.om)) {
     const dOm = L.om - Y.om, dGm = isNum(L.gm) && isNum(Y.gm) ? L.gm - Y.gm : null;
-    let body = `Operating margin is <b>${pctPlain(L.om)}</b> (${bps(dOm)} YoY, ${bps(P && isNum(P.om) ? L.om - P.om : null)} QoQ).`;
+    let body = `${d.isFin ? "Pre-tax margin" : "Operating margin"} is <b>${pctPlain(L.om)}</b> (${bps(dOm)} YoY, ${bps(P && isNum(P.om) ? L.om - P.om : null)} QoQ).`;
     if (isNum(dGm) && L.grossProfit) body += ` Gross margin ${dGm >= 0 ? "widened" : "narrowed"} ${bps(dGm).replace(/^[+−]/, "")} to ${pctPlain(L.gm)}, ${Math.abs(dGm) > Math.abs(dOm) * 0.6 ? "so pricing and product costs explain most of the move." : "so most of the change came below gross profit, in operating costs."}`;
     const dRev = L.revenue - Y.revenue, dOI = L.operatingIncome - Y.operatingIncome;
     if (dRev > 0 && isNum(dOI)) {
@@ -667,7 +695,7 @@ function buildInsights(d) {
     if (MODE() === "qoq" && isNum(qoq)) verdict = `${nm} revenue moved ${pct(qoq)} QoQ in ${L.label} (${pct(r0)} YoY)`;
     else { verdict = `${nm} grew revenue ${pct(r0)} YoY in ${L.label}`; if (isNum(r1)) verdict += ` (${r0 > r1 + 0.01 ? "accelerating" : r0 < r1 - 0.01 ? "decelerating" : "steady"})`; }
     if (segLead) verdict += `. ${segLead.name} added the most revenue ${d.segL.cmpLabel === "vs prior year" ? "over the last fiscal year" : d.segL.cmpLabel}`;
-    if (Y && isNum(L.om) && isNum(Y.om)) verdict += `${segLead ? ". Operating margin is" : ", with operating margin"} ${L.om - Y.om >= 0.0025 ? "expanding" : L.om - Y.om <= -0.0025 ? "contracting" : "flat"} at ${pctPlain(L.om)}`;
+    if (Y && isNum(L.om) && isNum(Y.om)) verdict += `${segLead ? `. ${d.isFin ? "Pre-tax" : "Operating"} margin is` : `, with ${d.isFin ? "pre-tax" : "operating"} margin`} ${L.om - Y.om >= 0.0025 ? "expanding" : L.om - Y.om <= -0.0025 ? "contracting" : "flat"} at ${pctPlain(L.om)}`;
     const eg = Y ? growth(L.epsDiluted, Y.epsDiluted) : null;
     if (isNum(eg)) verdict += ` and EPS ${pct(eg)}`;
     verdict += ".";
@@ -816,7 +844,10 @@ async function load(symbol) {
       api("price-target-consensus", { symbol }).then(x => x[0] || null).catch(() => null)
     ]);
     const asc = a => [...a].sort((x, y) => x.date < y.date ? -1 : 1);
-    const d = { symbol, profile, inc: enrichIncome(asc(inc)), bs: asc(bs), cf: asc(cf), seg, geo, earnings, est, pt };
+    const isFin = isFinancial(profile);
+    const incRows = asc(inc).map(r => ({ ...r }));
+    if (isFin) normalizeFinancial(incRows, earnings);
+    const d = { symbol, profile, isFin, inc: enrichIncome(incRows), bs: asc(bs), cf: asc(cf), seg, geo, earnings, est, pt };
     d.bs.forEach(r => { normFY(r); r.label = qLabel(r); }); d.cf.forEach(r => { normFY(r); r.label = qLabel(r); });
     d.currency = d.inc[d.inc.length - 1].reportedCurrency || profile.currency || "USD";
     STATE.segSel = {}; STATE.px = null; STATE.guideEdit = false;
@@ -844,7 +875,9 @@ function render(d) {
   const ttmRev = sum(all.slice(-4).map(x => x.revenue));
   const app = document.getElementById("app");
 
-  const kpi = (lab, v, yoy, qoq, fmtD = pct) => `<div class="kpi"><span class="eyebrow">${lab}</span><span class="v">${v}</span><span class="d">${yoy !== undefined ? `<span>YoY ${chip(yoy, fmtD)}</span>` : ""}${qoq !== undefined ? `<span>QoQ ${chip(qoq, fmtD)}</span>` : ""}</span></div>`;
+  // inv: lower is better (e.g. efficiency ratio), so a fall is shown green
+  const kchip = (v, f, inv) => isNum(v) ? `<span class="chip ${cls(inv ? -v : v)}">${f(v)}</span>` : `<span class="chip">—</span>`;
+  const kpi = (lab, v, yoy, qoq, fmtD = pct, inv = false) => `<div class="kpi"><span class="eyebrow">${lab}</span><span class="v">${v}</span><span class="d">${yoy !== undefined ? `<span>YoY ${kchip(yoy, fmtD, inv)}</span>` : ""}${qoq !== undefined ? `<span>QoQ ${kchip(qoq, fmtD, inv)}</span>` : ""}</span></div>`;
   const dm = (a, b) => isNum(a) && isNum(b) ? a - b : null;
 
   app.innerHTML = `
@@ -871,10 +904,12 @@ function render(d) {
     <div class="insights drivers">${d.ins.list.map(i => { const k = i.tag.split(" · ")[0]; return `<details class="ins ${i.tone}" data-k="${esc(k)}" ${STATE.insOpen.has(k) ? "open" : ""}><summary><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><span class="chev" aria-hidden="true"></span></summary><p>${i.body}</p></details>`; }).join("")}</div>
   </section>
 
+  ${d.isFin ? `<p class="note finnote"><b>Bank figures:</b> revenue is shown as <b>net revenue</b> (revenue after interest expense), the headline figure banks report; FMP's raw revenue includes gross interest income. Profit is pre-tax income, and the efficiency ratio is total expenses ÷ net revenue (lower is better).</p>` : ""}
   <section class="kpis" aria-label="Latest quarter">
-    ${kpi("Revenue " + esc(L.label), money(L.revenue, cur), L.revYoY, L.revQoQ)}
-    ${kpi("Gross margin", pctPlain(L.gm), dm(L.gm, Y && Y.gm), dm(L.gm, P && P.gm), bps)}
-    ${kpi("Operating margin", pctPlain(L.om), dm(L.om, Y && Y.om), dm(L.om, P && P.om), bps)}
+    ${kpi((d.isFin ? "Net revenue " : "Revenue ") + esc(L.label), money(L.revenue, cur), L.revYoY, L.revQoQ)}
+    ${d.isFin ? kpi("Efficiency ratio", pctPlain(ratio(L.operatingExpenses, L.revenue)), dm(ratio(L.operatingExpenses, L.revenue), Y && ratio(Y.operatingExpenses, Y.revenue)), dm(ratio(L.operatingExpenses, L.revenue), P && ratio(P.operatingExpenses, P.revenue)), bps, true)
+      : kpi("Gross margin", pctPlain(L.gm), dm(L.gm, Y && Y.gm), dm(L.gm, P && P.gm), bps)}
+    ${kpi(d.isFin ? "Pre-tax margin" : "Operating margin", pctPlain(L.om), dm(L.om, Y && Y.om), dm(L.om, P && P.om), bps)}
     ${kpi("Net margin", pctPlain(L.nm), dm(L.nm, Y && Y.nm), dm(L.nm, P && P.nm), bps)}
     ${kpi("Diluted EPS", isNum(L.epsDiluted) ? L.epsDiluted.toFixed(2) : "—", Y ? growth(L.epsDiluted, Y.epsDiluted) : null, P ? growth(L.epsDiluted, P.epsDiluted) : null)}
     ${kpi("FCF (TTM)", money(ttmFcf, cur), undefined, undefined)}
@@ -904,7 +939,7 @@ function render(d) {
   <section class="sec" id="margins">
     <div class="sec-h"><div><span class="eyebrow">Profitability</span><h2>Margins and cost structure</h2><p>How much of each revenue dollar is kept at each level, and where the costs go.</p></div></div>
     <div class="grid2">
-      <div class="panel"><h4>Margins</h4>${legend([{ name: "Gross", color: "var(--c1)" }, { name: "Operating", color: "var(--c3)" }, { name: "Net", color: "var(--c2)" }])}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "Gross", color: "var(--c1)", values: q.map(r => r.grossProfit ? r.gm : null) }, { name: "Operating", color: "var(--c3)", values: q.map(r => r.om) }, { name: "Net", color: "var(--c2)", values: q.map(r => r.nm) }], { title: "Margins" })}</div></div>
+      <div class="panel"><h4>Margins</h4>${legend([{ name: "Gross", color: "var(--c1)" }, { name: d.isFin ? "Pre-tax" : "Operating", color: "var(--c3)" }, { name: "Net", color: "var(--c2)" }].filter(x => !(d.isFin && x.name === "Gross")))}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "Gross", color: "var(--c1)", values: q.map(r => r.grossProfit ? r.gm : null) }, { name: d.isFin ? "Pre-tax" : "Operating", color: "var(--c3)", values: q.map(r => r.om) }, { name: "Net", color: "var(--c2)", values: q.map(r => r.nm) }], { title: "Margins" })}</div></div>
       <div class="panel"><h4>Costs as % of revenue</h4>${legend([{ name: "Cost of revenue", color: "var(--c8)" }, { name: "R&D", color: "var(--c4)" }, { name: "SG&A", color: "var(--c7)" }])}<div class="chart">${lineChart(q.map(r => r.label), [{ name: "Cost of revenue", color: "var(--c8)", values: q.map(r => r.costOfRevenue ? r.cogsPct : null) }, { name: "R&D", color: "var(--c4)", values: q.map(r => r.researchAndDevelopmentExpenses ? r.rdPct : null) }, { name: "SG&A", color: "var(--c7)", values: q.map(r => r.sellingGeneralAndAdministrativeExpenses ? r.sgaPct : null) }], { title: "Cost structure", zero: true })}</div></div>
     </div>
   </section>
@@ -951,14 +986,19 @@ function render(d) {
 function renderIncTable() {
   const d = STATE.d, all = d.inc, start = Math.max(0, all.length - SHOW_Q), cur = d.currency, mode = STATE.incMode;
   const cols = all.slice(start).map((r, k) => ({ r, i: start + k }));
-  const rows = [
+  const rows = d.isFin ? [
+    ["Net revenue", "revenue", "strong"], ["Net interest income", "netInterestIncome", "sub"], ["Interest income", "interestIncome", "sub"], ["Interest expense", "interestExpense", "sub"],
+    ["Total expenses (incl. provisions)", "operatingExpenses", ""],
+    ["Pre-tax income", "incomeBeforeTax", "strong"], ["Income tax", "incomeTaxExpense", "sub"], ["Net income", "netIncome", "strong"],
+    ["Diluted EPS", "epsDiluted", "", "eps"], ["Diluted shares", "weightedAverageShsOutDil", "", "shares"]
+  ] : [
     ["Revenue", "revenue", "strong"], ["Cost of revenue", "costOfRevenue", "sub"], ["Gross profit", "grossProfit", "strong"],
     ["R&D", "researchAndDevelopmentExpenses", "sub"], ["SG&A", "sellingGeneralAndAdministrativeExpenses", "sub"], ["Total operating expenses", "operatingExpenses", ""],
     ["Operating income", "operatingIncome", "strong"], ["EBITDA", "ebitda", ""], ["Interest expense", "interestExpense", "sub"],
     ["Pre-tax income", "incomeBeforeTax", ""], ["Income tax", "incomeTaxExpense", "sub"], ["Net income", "netIncome", "strong"],
     ["Diluted EPS", "epsDiluted", "", "eps"], ["Diluted shares", "weightedAverageShsOutDil", "", "shares"]
   ];
-  const marginRows = [["Gross margin", "gm"], ["Operating margin", "om"], ["Net margin", "nm"], ["Effective tax rate", "taxRate"]];
+  const marginRows = d.isFin ? [["Pre-tax margin", "om"], ["Net margin", "nm"], ["Efficiency ratio", "eff"], ["Effective tax rate", "taxRate"]] : [["Gross margin", "gm"], ["Operating margin", "om"], ["Net margin", "nm"], ["Effective tax rate", "taxRate"]];
   const cell = (v, html) => `<td class="${!isNum(v) ? "na" : ""}">${html}</td>`;
   let h = `<table><thead><tr><th>${esc(cur)}</th>${cols.map(c => `<th>${esc(c.r.label)}<br><span style="font-weight:400">${esc(c.r.date)}</span></th>`).join("")}</tr></thead><tbody>`;
   rows.forEach(([name, f, k, kind]) => {
@@ -981,7 +1021,7 @@ function renderIncTable() {
     h += `<tr><td>${name}</td>`;
     cols.forEach(({ r, i }) => {
       if (mode === "values" || mode === "pct") h += cell(r[f], pctPlain(r[f]));
-      else { const j = mode === "yoy" ? yearAgoIdx(all, i) : i - 1; const x = j >= 0 && isNum(r[f]) && isNum(all[j][f]) ? r[f] - all[j][f] : null; h += `<td class="${isNum(x) ? (f === "taxRate" ? "" : cls(x)) : "na"}">${bps(x)}</td>`; }
+      else { const j = mode === "yoy" ? yearAgoIdx(all, i) : i - 1; const x = j >= 0 && isNum(r[f]) && isNum(all[j][f]) ? r[f] - all[j][f] : null; h += `<td class="${isNum(x) ? (f === "taxRate" ? "" : f === "eff" ? cls(-x) : cls(x)) : "na"}">${bps(x)}</td>`; }
     });
     h += `</tr>`;
   });
@@ -1814,8 +1854,12 @@ async function peerMetrics(sym) {
     api("analyst-estimates", { symbol: sym, period: "annual", limit: 10 }).catch(() => [])
   ]);
   if (!prof && !inc.length) throw new ApiError(`No data found for ${sym}`, 404);
-  const rows = enrichIncome([...inc].sort((a, b) => a.date < b.date ? -1 : 1));
+  const fin = isFinancial(prof);
+  const raw = [...inc].sort((a, b) => a.date < b.date ? -1 : 1).map(r => ({ ...r }));
+  if (fin) normalizeFinancial(raw, null);
+  const rows = enrichIncome(raw);
   const n = rows.length, L = rows[n - 1] || {};
+  const t4 = rows.slice(-4), t4rev = rows.length >= 4 ? sum(t4.map(r => r.revenue)) : null;
   const price = prof && prof.price, tradeCur = (prof && prof.currency) || "", repCur = L.reportedCurrency || tradeCur;
   const es = (Array.isArray(est) ? est : []).filter(e => e && e.date).sort((a, b) => a.date < b.date ? -1 : 1);
   const e = es.find(x => x.date > todayISO()) || null;
@@ -1823,11 +1867,16 @@ async function peerMetrics(sym) {
   return {
     sym, name: (prof && prof.companyName) || sym, price, tradeCur, repCur, mktCap: prof && prof.marketCap, label: L.label || "—",
     revQoQ: L.revQoQ, revYoY: L.revYoY, gmQ: L.grossProfit ? L.gm : null, omQ: L.om, nmQ: L.nm,
-    gmT: rat.grossProfitMarginTTM || null, omT: rat.operatingProfitMarginTTM, nmT: rat.netProfitMarginTTM,
+    fin, gmT: fin ? null : (rat.grossProfitMarginTTM || null),
+    omT: fin ? ratio(sum(t4.map(r => r.operatingIncome)), t4rev) : rat.operatingProfitMarginTTM,
+    nmT: fin ? ratio(sum(t4.map(r => r.netIncome)), t4rev) : rat.netProfitMarginTTM,
+    pb: rat.priceToBookRatioTTM, roe: km.returnOnEquityTTM,
     pe: rat.priceToEarningsRatioTTM, fpe: e && isNum(price) && e.epsAvg > 0 && tradeCur === repCur ? price / e.epsAvg : null, fyLabel: e ? "FY" + e.date.slice(2, 4) + "E" : "",
     fwdRevG: e && eP ? growth(e.revenueAvg, eP.revenueAvg) : null,
-    evS: km.evToSalesTTM, evE: km.evToEBITDATTM, pfcf: rat.priceToFreeCashFlowRatioTTM, fcfY: km.freeCashFlowYieldTTM,
-    roic: km.returnOnInvestedCapitalTTM, ndE: km.netDebtToEBITDATTM, peg: rat.priceToEarningsGrowthRatioTTM
+    // enterprise-value and FCF multiples don't apply to banks (debt and cash flows are their raw material)
+    evS: fin ? (isNum(prof && prof.marketCap) && t4rev ? prof.marketCap / t4rev : null) : km.evToSalesTTM,
+    evE: fin ? null : km.evToEBITDATTM, pfcf: fin ? null : rat.priceToFreeCashFlowRatioTTM, fcfY: fin ? null : km.freeCashFlowYieldTTM,
+    roic: fin ? null : km.returnOnInvestedCapitalTTM, ndE: fin ? null : km.netDebtToEBITDATTM, peg: rat.priceToEarningsGrowthRatioTTM
   };
 }
 
@@ -1844,11 +1893,13 @@ function peerCols() {
     { k: "om", grp: `Margins (${basis === "q" ? "latest qtr" : "TTM"})`, label: "Operating", get: x => x[mg("om")], f: v => pctPlain(v), better: "high", diff: "pp" },
     { k: "nm", grp: `Margins (${basis === "q" ? "latest qtr" : "TTM"})`, label: "Net", get: x => x[mg("nm")], f: v => pctPlain(v), better: "high", diff: "pp" },
     { k: "pe", grp: "Valuation", label: "P/E", get: x => x.pe, f: mult, val: true },
+    { k: "pb", grp: "Valuation", label: "P/B", get: x => x.pb, f: mult, val: true },
     { k: "fpe", grp: "Valuation", label: "Fwd P/E", get: x => x.fpe, f: mult, val: true },
-    { k: "evS", grp: "Valuation", label: "EV/Sales", get: x => x.evS, f: mult, val: true },
+    { k: "evS", grp: "Valuation", label: STATE.d && STATE.d.isFin ? "P/Sales" : "EV/Sales", get: x => x.evS, f: mult, val: true },
     { k: "evE", grp: "Valuation", label: "EV/EBITDA", get: x => x.evE, f: mult, val: true },
     { k: "pfcf", grp: "Valuation", label: "P/FCF", get: x => x.pfcf, f: mult, val: true },
     { k: "fcfY", grp: "Valuation", label: "FCF yield", get: x => x.fcfY, f: v => pctPlain(v), better: "high", diff: "pp" },
+    { k: "roe", grp: "Quality", label: "ROE", get: x => x.roe, f: v => pctPlain(v, 0), better: "high", diff: "pp" },
     { k: "roic", grp: "Quality", label: "ROIC", get: x => x.roic, f: v => pctPlain(v, 0), better: "high", diff: "pp" },
     { k: "ndE", grp: "Quality", label: "Net debt / EBITDA", get: x => x.ndE, f: v => isNum(v) ? v.toFixed(1) + "×" : "—", better: "low" }
   ];
@@ -2156,8 +2207,10 @@ async function runChatTool(name, input, sink) {
   if (name === "get_company_snapshot") return compactPeer(await peerMetrics(sym));
   if (name === "get_quarterly_financials") {
     const n = Math.max(2, Math.min(12, input.quarters || 8));
-    const raw = await api("income-statement", { symbol: sym, period: "quarter", limit: n + 4 });
-    const rows = enrichIncome([...raw].sort((a, b) => a.date < b.date ? -1 : 1)).slice(-n);
+    const [raw, pr] = await Promise.all([api("income-statement", { symbol: sym, period: "quarter", limit: n + 4 }), api("profile", { symbol: sym }).then(x => x[0] || null).catch(() => null)]);
+    const srt = [...raw].sort((a, b) => a.date < b.date ? -1 : 1).map(r => ({ ...r }));
+    if (isFinancial(pr)) normalizeFinancial(srt, await api("earnings", { symbol: sym, limit: 16 }).catch(() => []));
+    const rows = enrichIncome(srt).slice(-n);
     return { symbol: sym, currency: rows.length ? rows[rows.length - 1].reportedCurrency : null, quarters: rows.map(r => ({ period: r.label, periodEnd: r.date, revenue: r4(r.revenue), revQoQ_pct: pctN(r.revQoQ), revYoY_pct: pctN(r.revYoY), grossMargin_pct: pctN(r.grossProfit ? r.gm : null), opMargin_pct: pctN(r.om), netMargin_pct: pctN(r.nm), operatingIncome: r4(r.operatingIncome), netIncome: r4(r.netIncome), dilutedEPS: r4(r.epsDiluted) })) };
   }
   if (name === "get_price_history") {
@@ -2463,7 +2516,8 @@ function ansMargins(d, m) {
   const cur = d.currency, q = d.inc, n = q.length, L = q[n - 1], P = q[n - 2], yi = yearAgoIdx(q, n - 1), Y = yi >= 0 ? q[yi] : null;
   const B = m === "qoq" ? P : Y, w = m === "qoq" ? "QoQ" : "YoY";
   const dGm = B && isNum(L.gm) && isNum(B.gm) ? L.gm - B.gm : null, dOm = B ? L.om - B.om : null, dNm = B ? L.nm - B.nm : null;
-  let html = `<p><b>Operating margin ${pctPlain(L.om)}</b> in ${esc(L.label)}, ${bps(dOm)} ${w}. Gross ${pctPlain(L.grossProfit ? L.gm : null)} (${bps(dGm)}), net ${pctPlain(L.nm)} (${bps(dNm)}).</p>`;
+  let html = d.isFin ? `<p><b>Pre-tax margin ${pctPlain(L.om)}</b> in ${esc(L.label)}, ${bps(dOm)} ${w}; net ${pctPlain(L.nm)} (${bps(dNm)}). Efficiency ratio ${pctPlain(L.eff)} (${bps(B ? L.eff - B.eff : null)}, lower is better).</p>`
+    : `<p><b>Operating margin ${pctPlain(L.om)}</b> in ${esc(L.label)}, ${bps(dOm)} ${w}. Gross ${pctPlain(L.grossProfit ? L.gm : null)} (${bps(dGm)}), net ${pctPlain(L.nm)} (${bps(dNm)}).</p>`;
   const lines = [];
   if (isNum(dGm) && isNum(dOm) && L.grossProfit) lines.push(Math.abs(dGm) > Math.abs(dOm) * 0.6 ? `Most of the move is at the gross line, so pricing, mix and product costs explain it.` : `Most of the move is below gross profit, in operating costs.`);
   if (B) {
@@ -2526,7 +2580,7 @@ async function ansPeers(d, m, turn, extra, focus) {
   const ref = set.length === 1 ? esc(set[0].sym) : "median";
   const lines = [
     isNum(g(me)) ? `Revenue growth ${pct(g(me))} ${w}, ranking <b>${rank(g)}</b> (${ref} ${pct(median(set.map(g)))}).${m === "qoq" ? " Fiscal calendars differ, so QoQ can reflect seasonality." : ""}` : "",
-    isNum(me.omT) ? `TTM operating margin ${pctPlain(me.omT)}, ranking <b>${rank(x => x.omT)}</b> (${ref} ${pctPlain(median(set.map(x => x.omT)))}).` : "",
+    isNum(me.omT) ? `TTM ${me.fin ? "pre-tax" : "operating"} margin ${pctPlain(me.omT)}, ranking <b>${rank(x => x.omT)}</b> (${ref} ${pctPlain(median(set.map(x => x.omT)))}).` : "",
     isNum(me.gmT) ? `TTM gross margin ${pctPlain(me.gmT)} vs ${ref} ${pctPlain(median(set.map(x => x.gmT)))}.` : "",
     isNum(me.fpe) || isNum(me.evE) ? `Valuation: EV/EBITDA ${mult(me.evE)} (rank ${rank(x => multOk(x.evE) ? x.evE : null, false)} cheapest), forward P/E ${mult(me.fpe)}.` : ""
   ];
