@@ -265,6 +265,13 @@ tr.clk .go { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .pxstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
 .pxstat { background: var(--sunk); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
 .pxstat .v { font: 500 22px/1.1 var(--f-mono); }
+tr.grp td #capSel { margin-left: 12px; height: 26px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font: 500 12px var(--f-body); text-transform: none; letter-spacing: 0; padding: 0 6px; }
+.histhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
+.histctl { display: flex; flex-wrap: wrap; gap: 8px; }
+.histctl .seg button { padding: 5px 11px; }
+.heat sup { font-size: 9px; margin-left: 1px; }
+tr.gonerow td { background: var(--surface); padding-top: 6px; padding-bottom: 6px; }
+tr.gone td { opacity: .7; }
 .finnote { margin: -24px 0 0; padding: 8px 12px; background: var(--accent-soft); border-radius: 6px; max-width: none; }
 .emhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
 #emove { display: grid; gap: 12px; }
@@ -816,10 +823,16 @@ async function apiFetch(path, params) {
 }
 
 async function loadSegments(endpoint, symbol) {
-  let qNote = "";
-  try { const q = await api(endpoint, { symbol, period: "quarter" }); const s = normSegments(q, "quarter"); if (s && s.rows.length >= 2) return s; qNote = "No quarterly segment figures were returned for this company."; }
-  catch (e) { qNote = e.message; }
-  try { const a = await api(endpoint, { symbol }); const s = normSegments(a, "annual"); if (s) s.qNote = qNote; return s; } catch (e) { return null; }
+  const [qr, ar] = await Promise.allSettled([api(endpoint, { symbol, period: "quarter" }), api(endpoint, { symbol })]);
+  let q = null, qNote = "";
+  if (qr.status === "fulfilled") { q = normSegments(qr.value, "quarter"); if (!q || q.rows.length < 2) { q = null; qNote = "No quarterly segment figures were returned for this company."; } }
+  else qNote = qr.reason && qr.reason.message || "Quarterly segment data unavailable.";
+  const an = ar.status === "fulfilled" ? normSegments(ar.value, "annual") : null;
+  const primary = q || an;
+  if (!primary) return null;
+  if (!q) primary.qNote = qNote;
+  primary.alt = { q, a: an, qNote };
+  return primary;
 }
 
 async function load(symbol) {
@@ -983,6 +996,26 @@ function render(d) {
   if (allBtn) allBtn.addEventListener("click", () => { const open = ![...dr].every(x => x.open); dr.forEach(x => x.open = open); syncAll(); });
 }
 
+/* Operating NWC = (receivables + inventory + other operating current assets) - (payables + deferred revenue + accrued expenses).
+   Cash, short-term investments and debt are excluded, so it measures the capital tied up in running the business. */
+function onwcParts(b) {
+  if (!b) return null;
+  const rec = isNum(b.netReceivables) ? b.netReceivables : n0(b.accountsReceivables) + n0(b.otherReceivables);
+  const inv = n0(b.inventory), oca = n0(b.prepaids) + n0(b.otherCurrentAssets);
+  const ap = n0(b.accountPayables), dr = n0(b.deferredRevenue), acc = n0(b.accruedExpenses);
+  return { rec, inv, oca, ap, dr, acc, onwc: rec + inv + oca - (ap + dr + acc) };
+}
+function capRowFor(d, i) {
+  const r = d.inc[i]; if (!r) return null;
+  const match = arr => arr.find(x => x.date === r.date) || arr.find(x => x.period === r.period && +x.fiscalYear === +r.fiscalYear) || null;
+  const b = match(d.bs), c = match(d.cf), w = onwcParts(b);
+  const ttm = i >= 3 ? sum(d.inc.slice(i - 3, i + 1).map(x => x.revenue)) : null;
+  const capex = c ? Math.abs(n0(isNum(c.capitalExpenditure) ? c.capitalExpenditure : c.investmentsInPropertyPlantAndEquipment)) : null;
+  const da = c && isNum(c.depreciationAndAmortization) ? c.depreciationAndAmortization : isNum(r.depreciationAndAmortization) ? r.depreciationAndAmortization : null;
+  return { ...(w || {}), onwc: w ? w.onwc : null, ttm, capex, da,
+    onwcPct: w ? ratio(w.onwc, ttm) : null, capexPct: ratio(capex, r.revenue), daPct: ratio(da, r.revenue), capexDa: ratio(capex, da) };
+}
+
 function renderIncTable() {
   const d = STATE.d, all = d.inc, start = Math.max(0, all.length - SHOW_Q), cur = d.currency, mode = STATE.incMode;
   const cols = all.slice(start).map((r, k) => ({ r, i: start + k }));
@@ -1025,8 +1058,35 @@ function renderIncTable() {
     });
     h += `</tr>`;
   });
+  // working capital & investment: % of revenue by default, actual figures from the drop-down
+  if (!d.isFin) {
+    const cm = STATE.capMode === "abs" ? "abs" : "pct", cap = cols.map(({ i }) => capRowFor(d, i));
+    const chg = mode === "yoy" || mode === "qoq";
+    const prevCap = ({ i }) => { const j = mode === "yoy" ? yearAgoIdx(all, i) : i - 1; return j >= 0 ? capRowFor(d, j) : null; };
+    h += `<tr class="grp"><td colspan="${cols.length + 1}"><span>Working capital &amp; investment${chg ? ` (${cm === "pct" ? "change in bps" : "% change"} ${mode === "yoy" ? "YoY" : "QoQ"})` : ""}</span>
+      <select id="capSel" aria-label="Show working capital and investment as"><option value="pct" ${cm === "pct" ? "selected" : ""}>% of revenue</option><option value="abs" ${cm === "abs" ? "selected" : ""}>Actual figures</option></select></td></tr>`;
+    const rowsPct = [["Operating NWC (% of TTM revenue)", "onwcPct", "strong"], ["Capex (% of revenue)", "capexPct"], ["D&amp;A (% of revenue)", "daPct"], ["Capex ÷ D&amp;A", "capexDa", "", "x"]];
+    const rowsAbs = [["Receivables", "rec", "sub"], ["Inventory", "inv", "sub"], ["Other operating current assets", "oca", "sub"], ["Payables", "ap", "sub", "neg"], ["Deferred revenue", "dr", "sub", "neg"], ["Accrued expenses", "acc", "sub", "neg"],
+      ["Operating NWC", "onwc", "strong"], ["Capex", "capex"], ["D&amp;A", "da"]];
+    (cm === "pct" ? rowsPct : rowsAbs).forEach(([name, f, k, kind]) => {
+      if (cap.every(c => !c || !isNum(c[f]) || (cm === "abs" && c[f] === 0 && f !== "onwc"))) return;
+      h += `<tr class="${k || ""}"><td>${name}</td>`;
+      cols.forEach((col, n) => {
+        const c = cap[n], v = c ? c[f] : null;
+        if (!chg) h += cell(v, kind === "x" ? (isNum(v) ? v.toFixed(2) + "×" : "—") : cm === "pct" ? pctPlain(v) : (kind === "neg" && isNum(v) && v ? "(" + money(v, cur) + ")" : money(v, cur)));
+        else {
+          const pc = prevCap(col), pv = pc ? pc[f] : null;
+          const x = cm === "pct" && kind !== "x" ? (isNum(v) && isNum(pv) ? v - pv : null) : growth(v, pv);
+          h += `<td class="${isNum(x) ? "" : "na"}">${cm === "pct" && kind !== "x" ? bps(x) : pct(x)}</td>`;
+        }
+      });
+      h += `</tr>`;
+    });
+  }
   h += `</tbody></table>`;
   document.getElementById("incTable").innerHTML = h;
+  const cs = document.getElementById("capSel");
+  if (cs) cs.addEventListener("change", () => { STATE.capMode = cs.value; store.set("capMode", cs.value); renderIncTable(); const n = document.getElementById("capSel"); if (n) n.focus(); });
 }
 
 function growthSection(d) {
@@ -1045,6 +1105,50 @@ function growthSection(d) {
     ${growthBlock(d.seg, "seg", "By business unit", cur)}
     ${growthBlock(d.geo, "geo", "By region", cur)}
   </section>`;
+}
+
+function histTable(seg, id, colors, cur) {
+  const alt = seg.alt || { q: seg.mode === "quarter" ? seg : null, a: seg.mode !== "quarter" ? seg : null };
+  STATE.segHist = STATE.segHist || {};
+  let freq = STATE.segHist[id] || (alt.q ? "q" : "a");
+  if (freq === "q" && !alt.q) freq = "a";
+  if (freq === "a" && !alt.a) freq = "q";
+  const view = STATE.segHistView === "rev" ? "rev" : "pct";
+  const S = freq === "q" ? alt.q : alt.a; if (!S) return "";
+  const mode = MODE(), eff = freq === "q" ? mode : "fy", w = modeWord(eff);
+  const cmp = i => S.mode !== "quarter" ? i - 1 : (mode === "yoy" ? yearAgoIdx(S.rows, i) : i - 1);
+  const valid = S.rows.map((r, i) => i).filter(i => view === "rev" || cmp(i) >= 0);
+  const idx = valid.slice(-(freq === "q" ? 8 : 5));
+  if (!idx.length) return "";
+  const last = S.rows[idx[idx.length - 1]];
+  // segments with no revenue in the latest period are discontinued or reorganised: collapse them
+  const live = S.names.filter(n => isNum(last.data[n]) && last.data[n] !== 0), gone = S.names.filter(n => !live.includes(n) && idx.some(i => isNum(S.rows[i].data[n])));
+  const tot = x => S.names.reduce((t, n) => t + n0(x.data[n]), 0);
+  const scale = freq === "q" && mode === "qoq" ? 0.15 : 0.25;
+  const heat = v => { if (!isNum(v)) return ""; const a2 = Math.min(1, Math.abs(v) / scale); return `background:color-mix(in srgb, var(${v >= 0 ? "--pos" : "--neg"}) ${Math.round(8 + a2 * 40)}%, transparent)`; };
+  let extreme = false;
+  const cellFor = (i, n) => {
+    const r = S.rows[i], v = n ? r.data[n] : tot(r);
+    if (view === "rev") return `<td>${money(v, cur)}</td>`;
+    const pr = S.rows[cmp(i)], pv = pr ? (n ? pr.data[n] : tot(pr)) : null, g = growth(v, pv);
+    const big = isNum(g) && Math.abs(g) > 2; if (big) extreme = true;
+    return `<td class="${cls(g)}" style="${heat(g)}">${pct(g)}${big ? "<sup>†</sup>" : ""}</td>`;
+  };
+  const sw = n => colors[n] || "var(--c8)";
+  const row = (n, extraCls) => `<tr class="${extraCls || ""}"><td><span class="sw" style="background:${sw(n)}"></span>${esc(n)}</td>${idx.map(i => cellFor(i, n)).join("")}</tr>`;
+  const open = !!(STATE.segGoneOpen || {})[id];
+  const qBtn = `<button type="button" data-hf="q" data-hid="${id}" aria-pressed="${freq === "q"}" ${alt.q ? "" : `disabled title="FMP didn't return quarterly segment figures for this company on your plan"`}>Quarterly</button>`;
+  return `<div class="panel"><div class="histhead"><h4>${view === "rev" ? "Revenue history" : `${esc(w)} % change history`} <small>${freq === "q" ? "last " + idx.length + " quarters" : "last " + idx.length + " fiscal years"}${view === "pct" ? " · darker = bigger move" : ""}</small></h4>
+      <div class="histctl"><div class="seg" role="group" aria-label="Frequency">${qBtn}<button type="button" data-hf="a" data-hid="${id}" aria-pressed="${freq === "a"}" ${alt.a ? "" : "disabled"}>Annual</button></div>
+      <div class="seg" role="group" aria-label="Show"><button type="button" data-hv="pct" aria-pressed="${view === "pct"}">% change</button><button type="button" data-hv="rev" aria-pressed="${view === "rev"}">Revenue</button></div></div></div>
+    ${!alt.q ? `<p class="note">Quarterly segment figures aren't available from FMP for this company on your plan, so the history is annual. The Quarterly option switches on automatically if they become available.</p>` : ""}
+    <div class="tbl heat"><table><thead><tr><th>${id === "geo" ? "Region" : "Segment"}</th>${idx.map(i => `<th>${esc(S.rows[i].label)}</th>`).join("")}</tr></thead><tbody>
+      ${live.map(n => row(n)).join("")}
+      ${gone.length ? `<tr class="gonerow"><td colspan="${idx.length + 1}"><button type="button" class="more" data-gone="${id}" aria-expanded="${open}">${open ? "Hide" : "Show"} ${gone.length} discontinued or reorganised segment${gone.length > 1 ? "s" : ""} ${open ? "▴" : "▾"}</button></td></tr>${open ? gone.map(n => row(n, "gone")).join("") : ""}` : ""}
+      <tr class="strong"><td>Total</td>${idx.map(i => cellFor(i, null)).join("")}</tr>
+    </tbody></table></div>
+    ${view === "pct" && extreme ? `<p class="note">† Moves above ±200% usually reflect a segment reorganisation or a very small starting base rather than real growth. Switch to Revenue to see the underlying figures.</p>` : ""}
+  </div>`;
 }
 
 function growthBlock(seg, id, title, cur) {
@@ -1108,14 +1212,8 @@ function growthBlock(seg, id, title, cur) {
       <td class="big ${cls(sa.totGrowth)}">${pct(sa.totGrowth)}</td><td>${dbar(sa.totGrowth)}</td><td class="${cls(sa.totGrowth)}">${pp(sa.totGrowth)}</td><td>100%</td><td></td></tr>
   </tbody></table></div>`;
 
-  /* history heat table */
-  const histIdx = valid.slice(-(seg.mode === "quarter" ? SHOW_Q : 5));
-  const tot = x => seg.names.reduce((s2, n) => s2 + n0(x.data[n]), 0);
-  const heat = v => { if (!isNum(v)) return ""; const a = Math.min(1, Math.abs(v) / (mode === "qoq" && seg.mode === "quarter" ? 0.15 : 0.25)); return `background:color-mix(in srgb, var(${v >= 0 ? "--pos" : "--neg"}) ${Math.round(8 + a * 40)}%, transparent)`; };
-  const hist = `<div class="panel"><h4>${esc(w)} % change history <small>darker = bigger move</small></h4><div class="tbl heat"><table><thead><tr><th>${id === "geo" ? "Region" : "Segment"}</th>${histIdx.map(i => `<th>${esc(seg.rows[i].label)}</th>`).join("")}</tr></thead><tbody>
-    ${seg.names.map(n => `<tr><td><span class="sw" style="background:${colors[n]}"></span>${esc(n)}</td>${histIdx.map(i => { const v = growth(seg.rows[i].data[n], seg.rows[segCmpIdx(seg, i, mode)].data[n]); return `<td class="${cls(v)}" style="${heat(v)}">${pct(v)}</td>`; }).join("")}</tr>`).join("")}
-    <tr class="strong"><td>Total</td>${histIdx.map(i => { const v = growth(tot(seg.rows[i]), tot(seg.rows[segCmpIdx(seg, i, mode)])); return `<td class="${cls(v)}" style="${heat(v)}">${pct(v)}</td>`; }).join("")}</tr>
-  </tbody></table></div></div>`;
+  /* history table: quarterly or annual, % change or revenue */
+  const hist = histTable(seg, id, colors, cur);
 
   const picker = `<label class="note">Period <select data-sel="${id}" id="sel-${id}">${valid.slice().reverse().map(i => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(seg.rows[i].label)} vs ${esc(seg.rows[segCmpIdx(seg, i, mode)].label)}</option>`).join("")}</select></label>`;
   const marg = id === "seg" ? `<p class="note">Segment margins and costs aren't in Financial Modeling Prep's data (it reports revenue by segment only). Where a company discloses segment operating income, it's in the segment note of the 10-Q/10-K.</p>` : "";
@@ -1133,7 +1231,7 @@ function bsSection(d, cur) {
   const b = d.bs; if (!b.length) return `<p class="status">No balance sheet data.</p>`;
   const n = b.length, L = b[n - 1], P = b[n - 2], Y = n >= 5 ? b[n - 5] : null;
   const derive = r => r && Object.assign(r, {
-    _cash: n0(r.cashAndShortTermInvestments), _wc: n0(r.totalCurrentAssets) - n0(r.totalCurrentLiabilities),
+    _cash: n0(r.cashAndShortTermInvestments), _wc: (onwcParts(r) || {}).onwc,
     _cr: ratio(r.totalCurrentAssets, r.totalCurrentLiabilities), _de: ratio(r.totalDebt, r.totalStockholdersEquity)
   });
   [L, P, Y].forEach(derive);
@@ -1168,7 +1266,7 @@ function bsSection(d, cur) {
     ["grp", "Liabilities"], ["Accounts payable", "accountPayables"], ["Deferred revenue", "deferredRevenue"], ["Short-term debt", "shortTermDebt"],
     ["Total current liabilities", "totalCurrentLiabilities", "strong"], ["Long-term debt", "longTermDebt"], ["Total liabilities", "totalLiabilities", "strong"],
     ["grp", "Equity"], ["Retained earnings", "retainedEarnings"], ["Total equity", "totalStockholdersEquity", "strong"],
-    ["grp", "Position"], ["Total debt", "totalDebt"], ["Net debt (negative = net cash)", "netDebt", "strong"], ["Working capital", "_wc"],
+    ["grp", "Position"], ["Total debt", "totalDebt"], ["Net debt (negative = net cash)", "netDebt", "strong"], ...(d.isFin ? [] : [["Operating working capital", "_wc"]]),
     ["Current ratio", "_cr", "", "x"], ["Debt / equity", "_de", "", "x"]
   ];
   const fv = (v, kind) => kind === "x" ? (isNum(v) ? v.toFixed(2) + "×" : "—") : money(v, cur);
@@ -2148,7 +2246,7 @@ function buildChatContext() {
     grossMargin_pct: pctN(r.grossProfit ? r.gm : null), opMargin_pct: pctN(r.om), netMargin_pct: pctN(r.nm),
     rnd_pctRev: pctN(r.rdPct), sga_pctRev: pctN(r.sgaPct), taxRate_pct: pctN(r.taxRate), dilutedShares: r4(r.weightedAverageShsOutDil) }));
   const b = d.bs.slice(-5).map(r => ({ period: r.label, cashAndSTInvestments: r4(r.cashAndShortTermInvestments), receivables: r4(r.netReceivables), inventory: r4(r.inventory),
-    totalAssets: r4(r.totalAssets), totalDebt: r4(r.totalDebt), netDebt: r4(r.netDebt), totalEquity: r4(r.totalStockholdersEquity), deferredRevenue: r4(r.deferredRevenue) }));
+    totalAssets: r4(r.totalAssets), totalDebt: r4(r.totalDebt), netDebt: r4(r.netDebt), totalEquity: r4(r.totalStockholdersEquity), deferredRevenue: r4(r.deferredRevenue), operatingNWC: r4((onwcParts(r) || {}).onwc) }));
   const c = d.cf.slice(-8).map(r => ({ period: r.label, operatingCashFlow: r4(r.operatingCashFlow), capex: r4(r.capitalExpenditure), freeCashFlow: r4(r.freeCashFlow),
     buybacks: r4(r.commonStockRepurchased), dividends: r4(r.commonDividendsPaid), sbc: r4(r.stockBasedCompensation) }));
   const fc = f ? {
@@ -2760,6 +2858,7 @@ async function askLocal(question) {
   STATE.incMode = store.get("incMode") || "values";
   STATE.cmp = store.get("cmpMode") === "yoy" ? "yoy" : "qoq";
   STATE.moveWin = store.get("moveWin") || "All";
+  STATE.capMode = store.get("capMode") === "abs" ? "abs" : "pct";
   const cmpBtns = document.querySelectorAll("#cmpSeg button");
   const syncCmp = () => cmpBtns.forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === STATE.cmp)));
   syncCmp();
@@ -2775,9 +2874,12 @@ async function askLocal(question) {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && STATE.chatOpen && !CHAT.busy) { STATE.chatOpen = false; renderChat(); } });
   const appEl = document.getElementById("app");
   appEl.addEventListener("click", e => {
-    const t = e.target.closest("[data-evt],[data-pxmode],[data-pxrange],[data-pxclose]");
+    const t = e.target.closest("[data-evt],[data-pxmode],[data-pxrange],[data-pxclose],[data-hf],[data-hv],[data-gone]");
     if (!t || !STATE.d) return;
     if (t.dataset.evt) openPx("event", t.dataset.evt);
+    else if (t.dataset.hf) { STATE.segHist = STATE.segHist || {}; STATE.segHist[t.dataset.hid] = t.dataset.hf; rerenderKeepScroll(); }
+    else if (t.dataset.hv) { STATE.segHistView = t.dataset.hv; rerenderKeepScroll(); }
+    else if (t.dataset.gone) { STATE.segGoneOpen = STATE.segGoneOpen || {}; STATE.segGoneOpen[t.dataset.gone] = !STATE.segGoneOpen[t.dataset.gone]; rerenderKeepScroll(); }
     else if (t.dataset.pxmode) openPx("general");
     else if (t.dataset.pxrange) { STATE.px.range = t.dataset.pxrange; renderPx(false); }
     else if (t.dataset.pxclose) { STATE.px.open = false; renderPx(false); const tb = document.querySelector("#forecast .tbl tr.clk"); if (tb) tb.closest(".panel").scrollIntoView({ block: "nearest" }); }
