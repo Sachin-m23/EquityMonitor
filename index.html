@@ -272,6 +272,25 @@ tr.grp td #capSel { margin-left: 12px; height: 26px; border: 1px solid var(--lin
 .heat sup { font-size: 9px; margin-left: 1px; }
 tr.gonerow td { background: var(--surface); padding-top: 6px; padding-bottom: 6px; }
 tr.gone td { opacity: .7; }
+/* ETF view */
+.etfbadge { background: var(--accent); color: var(--surface); font-weight: 600; padding: 1px 7px; border-radius: 4px; }
+.sparkgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.sparkcard { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
+.sch { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.sch .w { font: 500 12px var(--f-mono); color: var(--muted); }
+.scn { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scf { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font: 12px var(--f-mono); color: var(--muted); }
+.scf b { font-size: 15px; font-weight: 600; }
+svg.spark { width: 100%; height: 56px; display: block; }
+.sparkna { height: 56px; display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+.linkbtn { border: 0; background: none; padding: 0; font: 600 14px var(--f-mono); color: var(--ink); cursor: pointer; text-align: left; }
+.linkbtn:hover, .linkbtn:focus-visible { color: var(--accent); text-decoration: underline; outline: none; }
+.etfcomp { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+@media (max-width: 900px) { .etfcomp { grid-template-columns: 1fr; } }
+details.allh summary { list-style: none; cursor: pointer; }
+details.allh summary::-webkit-details-marker { display: none; }
+details.allh summary h4::after { content: " ▾"; color: var(--muted); }
+details.allh[open] summary h4::after { content: " ▴"; }
 .finnote { margin: -24px 0 0; padding: 8px 12px; background: var(--accent-soft); border-radius: 6px; max-width: none; }
 .emhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
 #emove { display: grid; gap: 12px; }
@@ -843,6 +862,10 @@ async function load(symbol) {
   const app = document.getElementById("app");
   app.innerHTML = `<div class="status">Loading ${esc(symbol)}…</div><div class="skel"></div><div class="skel"></div>`;
   try {
+    // ETFs get their own view; every other ticker continues exactly as before
+    const prof0 = await api("profile", { symbol }).then(x => x[0] || null).catch(() => null);
+    if (isEtfProfile(prof0)) { await loadEtf(symbol, prof0); return; }
+    STATE.etf = null; { const fab = document.getElementById("chatFab"); if (fab && !STATE.chatOpen) fab.hidden = false; }
     const [profile, inc, bs, cf] = await Promise.all([
       api("profile", { symbol }).then(x => x[0] || {}).catch(() => ({})),
       api("income-statement", { symbol, period: "quarter", limit: FETCH_Q }),
@@ -2841,6 +2864,399 @@ async function askLocal(question) {
   finally { turn.status = ""; CHAT.busy = false; renderChat(); }
 }
 
+/* =====================================================================
+   ETF MODE — used only when the ticker's FMP profile says it is an ETF.
+   Single-stock tickers never reach this code.
+   ===================================================================== */
+const isEtfProfile = p => !!p && (p.isEtf === true || p.isEtf === "true");
+
+// day cache in browser storage so re-opening an ETF doesn't spend API calls again
+function dayCache(key, fn) {
+  const k = "c:" + key + ":" + todayISO();
+  try { const v = localStorage.getItem(k); if (v) return Promise.resolve(JSON.parse(v)); } catch (e) {}
+  return fn().then(v => { try { if (v) localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} return v; });
+}
+(function pruneDayCache() { try { const t = todayISO(); Object.keys(localStorage).forEach(k => { if (k.startsWith("c:") && !k.endsWith(":" + t)) localStorage.removeItem(k); }); } catch (e) {} })();
+
+// run async jobs a few at a time (keeps FMP rate limits happy)
+async function pool(items, n, fn, onStep) {
+  const out = new Array(items.length); let i = 0, done = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; try { out[k] = await fn(items[k], k); } catch (e) { out[k] = null; } done++; if (onStep) onStep(done, items.length); }
+  }));
+  return out;
+}
+
+/* Valuation basis by industry: banks/insurers on book value, capital-intensive sectors on EV/EBIT,
+   software/internet on EV/Sales, real estate on EV/EBITDA, everything else on P/E. */
+const VAL_BASIS = { pb: "P/B", evEbit: "EV/EBIT", evSales: "EV/Sales", evEbitda: "EV/EBITDA", pe: "P/E" };
+function valBasis(sector, industry) {
+  sector = sector || ""; industry = industry || "";
+  if (/Financial/i.test(sector) && /Bank|Capital Markets|Insurance|Mortgage|Conglomerates/i.test(industry)) return "pb";
+  if (/Real Estate/i.test(sector)) return "evEbitda";
+  if (/Energy|Utilities|Industrials|Basic Materials/i.test(sector) || /Telecom/i.test(industry)) return "evEbit";
+  if (/Software|Internet Content|Information Technology Services/i.test(industry)) return "evSales";
+  return "pe";
+}
+
+async function holdingMetrics(sym) {
+  return dayCache("hm:" + sym, async () => {
+    const [prof, rat, km, inc] = await Promise.all([
+      api("profile", { symbol: sym }).then(x => x[0] || null).catch(() => null),
+      api("ratios-ttm", { symbol: sym }).then(x => x[0] || {}).catch(() => ({})),
+      api("key-metrics-ttm", { symbol: sym }).then(x => x[0] || {}).catch(() => ({})),
+      api("income-statement", { symbol: sym, period: "quarter", limit: 9 }).catch(() => [])
+    ]);
+    if (!prof && !inc.length) return null;
+    const fin = isFinancial(prof);
+    const raw = [...inc].sort((a, b) => a.date < b.date ? -1 : 1).map(r => ({ ...r }));
+    if (fin) normalizeFinancial(raw, null);
+    const rows = enrichIncome(raw), n = rows.length;
+    const t4 = rows.slice(-4), p4 = n >= 8 ? rows.slice(-8, -4) : [];
+    const S = (rs, f) => rs.length === 4 ? rs.reduce((t, r) => t + n0(r[f]), 0) : null;
+    const rev4 = S(t4, "revenue"), revP = S(p4, "revenue"), oi4 = S(t4, "operatingIncome"), oiP = S(p4, "operatingIncome");
+    const eps4 = S(t4, "epsDiluted"), epsP = S(p4, "epsDiluted");
+    const om = ratio(oi4, rev4), omP = ratio(oiP, revP);
+    const ev = isNum(km.enterpriseValueTTM) ? km.enterpriseValueTTM : null;
+    const sector = prof && prof.sector, industry = prof && prof.industry;
+    return {
+      sym, name: (prof && prof.companyName) || sym, sector, industry, fin, basis: valBasis(sector, industry),
+      price: prof && prof.price, mcap: prof && prof.marketCap, cur: rows.length ? rows[n - 1].reportedCurrency : (prof && prof.currency),
+      revG: growth(rev4, revP), epsG: growth(eps4, epsP), om, omChg: isNum(om) && isNum(omP) ? om - omP : null,
+      pe: rat.priceToEarningsRatioTTM, pb: rat.priceToBookRatioTTM,
+      evSales: isNum(km.evToSalesTTM) ? km.evToSalesTTM : ratio(ev, rev4), evEbitda: km.evToEBITDATTM,
+      evEbit: !fin && isNum(ev) && oi4 > 0 ? ev / oi4 : null
+    };
+  });
+}
+
+// 12-month return: FMP's price-change endpoint if available, otherwise computed from daily prices
+async function perf12m(sym) {
+  return dayCache("pf:" + sym, async () => {
+    try { const r = await api("stock-price-change", { symbol: sym }); const x = Array.isArray(r) ? r[0] : r; if (x && isNum(x["1Y"])) return { y1: x["1Y"] / 100, ytd: isNum(x.ytd) ? x.ytd / 100 : null }; } catch (e) {}
+    const px = await prices(sym, addDays(todayISO(), -370), todayISO());
+    if (!px.length) return null;
+    const ys = px.find(r => r.date >= todayISO().slice(0, 4) + "-01-01");
+    const prevYrEnd = [...px].reverse().find(r => r.date < todayISO().slice(0, 4) + "-01-01");
+    return { y1: growth(px[px.length - 1].close, px[0].close), ytd: prevYrEnd ? growth(px[px.length - 1].close, prevYrEnd.close) : (ys ? growth(px[px.length - 1].close, ys.open) : null) };
+  });
+}
+
+const CASH_TICKERS = new Set(["USD", "EUR", "GBP", "JPY", "CAD", "CHF", "AUD", "CASH", "CASH_USD", "XTSLA", "MSFUT", "FGXXX", "SPAXX"]);
+function normHoldings(raw, etfSym) {
+  const list = (Array.isArray(raw) ? raw : []).map(h => ({ sym: String(h.asset || h.symbol || "").toUpperCase().trim(), name: h.name || h.asset || "", w: parseFloat(h.weightPercentage ?? h.weight ?? h.weightPercent) }))
+    .filter(h => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(h.sym) && h.sym !== etfSym && isNum(h.w) && h.w > 0)
+    // drop cash, currency, money-market and derivative lines that ETF holdings files include
+    .filter(h => !CASH_TICKERS.has(h.sym) && !/\b(cash|dollar|currency|money market|futures?|swap|treasury bill|t-bill|collateral|margin)\b/i.test(h.name));
+  const tot = list.reduce((t, h) => t + h.w, 0);
+  if (tot > 1.5) list.forEach(h => h.w /= 100);           // FMP gives percent units
+  const seen = new Set();
+  return list.filter(h => !seen.has(h.sym) && seen.add(h.sym)).sort((a, b) => b.w - a.w);
+}
+const normSectors = raw => (Array.isArray(raw) ? raw : []).map(s => ({ name: s.sector || s.industry, w: parseFloat(s.weightPercentage ?? s.exposure) }))
+  .filter(s => s.name && isNum(s.w) && s.w > 0).map((s, i, a) => s).sort((a, b) => b.w - a.w);
+
+// weighted aggregates over the covered holdings (growth figures clipped to ±100% so one outlier can't dominate)
+function etfAggregate(hold, metrics) {
+  const rows = hold.map(h => ({ w: h.w, m: metrics[h.sym] })).filter(x => x.m);
+  const cov = rows.reduce((t, x) => t + x.w, 0);
+  const clip = v => isNum(v) ? Math.max(-1, Math.min(1, v)) : null;
+  const wavg = (f, c) => { let s = 0, ws = 0; rows.forEach(x => { const v = c ? clip(x.m[f]) : x.m[f]; if (isNum(v)) { s += x.w * v; ws += x.w; } }); return ws ? s / ws : null; };
+  const harm = f => { let ws = 0, inv = 0; rows.forEach(x => { const v = x.m[f]; if (isNum(v) && v > 0) { ws += x.w; inv += x.w / v; } }); return inv ? ws / inv : null; };
+  return { cov, n: rows.length, revG: wavg("revG", true), epsG: wavg("epsG", true), om: wavg("om"), omChg: wavg("omChg"), pe: harm("pe"), pb: harm("pb"), evSales: harm("evSales") };
+}
+
+const RELATED_ETFS = {
+  XLK: ["VGT", "SMH", "IGV", "QQQ"], XLY: ["VCR", "XRT", "XLP", "SPY"], XLP: ["VDC", "XLY", "XLV", "SPY"], XLF: ["KBE", "KRE", "VFH", "SPY"],
+  XLE: ["VDE", "XOP", "OIH", "SPY"], XLV: ["VHT", "IBB", "XBI", "SPY"], XLI: ["VIS", "ITA", "XLB", "SPY"], XLB: ["VAW", "XME", "XLI", "SPY"],
+  XLU: ["VPU", "XLRE", "XLP", "SPY"], XLRE: ["VNQ", "IYR", "XLU", "SPY"], XLC: ["VOX", "XLK", "QQQ", "SPY"], IGV: ["XLK", "SKYY", "WCLD", "QQQ"],
+  SMH: ["SOXX", "XLK", "QQQ", "SPY"], SOXX: ["SMH", "XLK", "QQQ", "SPY"], QQQ: ["SPY", "XLK", "IWM", "DIA"], SPY: ["QQQ", "IWM", "DIA", "RSP"],
+  KRE: ["KBE", "XLF", "IWM", "SPY"], XBI: ["IBB", "XLV", "IWM", "SPY"], VGT: ["XLK", "QQQ", "SMH", "SPY"], IWM: ["SPY", "QQQ", "MDY", "RSP"]
+};
+
+/* ---------------- load ---------------- */
+async function loadEtf(symbol, prof) {
+  const app = document.getElementById("app");
+  STATE.d = null; STATE.peerData = null; STATE.chatOpen = false;
+  const fab = document.getElementById("chatFab"); if (fab) fab.hidden = true;
+  const pane = document.getElementById("chatPane"); if (pane) pane.hidden = true;
+  app.innerHTML = `<div class="status">Loading ${esc(symbol)} (ETF)…</div><div class="skel"></div><div class="skel"></div>`;
+  const [info, hold, sect, px] = await Promise.all([
+    api("etf/info", { symbol }).then(x => Array.isArray(x) ? x[0] || null : x).catch(() => null),
+    api("etf/holdings", { symbol }).then(x => ({ ok: x })).catch(e => ({ err: e.message })),
+    api("etf/sector-weightings", { symbol }).catch(() => []),
+    prices(symbol, addDays(todayISO(), -372), todayISO()).catch(() => [])
+  ]);
+  const e = { symbol, prof, info, holdings: hold.ok ? normHoldings(hold.ok, symbol) : [], holdErr: hold.err || (hold.ok && !normHoldings(hold.ok, symbol).length ? "FMP returned no holdings for this ETF." : ""),
+    sectors: normSectors(sect).length ? normSectors(sect) : normSectors(info && info.sectorsList), px, metrics: {}, perf: {}, spark: {}, loading: true, progress: "" };
+  if (e.sectors.length && e.sectors.reduce((t, s) => t + s.w, 0) > 1.5) e.sectors.forEach(s => s.w /= 100);
+  e.cur = (info && info.navCurrency) || prof.currency || "USD";
+  STATE.etf = e; STATE.etfTab = STATE.etfTab || "ov";
+  renderEtf(e);
+  await loadEtfHoldings(e);
+}
+
+async function loadEtfHoldings(e) {
+  if (!e.holdings.length) { e.loading = false; renderEtf(e); return; }
+  const N = etfN(e), syms = e.holdings.slice(0, N).map(h => h.sym), top10 = e.holdings.slice(0, 10).map(h => h.sym);
+  e.loading = true; const tok = (e.tok = (e.tok || 0) + 1);
+  const prog = (a, b) => { e.progress = `Analysing holdings ${a} of ${b}…`; const el = document.getElementById("etfProg"); if (el) el.textContent = e.progress; };
+  const sparkJob = pool(top10, 4, async s => { if (!e.spark[s]) { const p = await prices(s, addDays(todayISO(), -370), todayISO()).catch(() => []); e.spark[s] = p.map(r => [r.date, r.close]); if (p.length) e.perf[s] = e.perf[s] || { y1: growth(p[p.length - 1].close, p[0].close) }; } });
+  const res = await pool(syms, 5, async s => { const m = e.metrics[s] || await holdingMetrics(s); const pf = e.perf[s] || await perf12m(s).catch(() => null); return { s, m, pf }; }, prog);
+  await sparkJob;
+  if (tok !== e.tok || STATE.etf !== e) return;
+  res.forEach(x => { if (x && x.m) e.metrics[x.s] = x.m; if (x && x.pf) e.perf[x.s] = x.pf; });
+  e.loading = false; e.progress = "";
+  renderEtf(e);
+}
+const etfN = e => { const v = STATE.etfN || +store.get("etfN") || 20; return v === 999 ? e.holdings.length : Math.min(v, e.holdings.length); };
+
+/* ---------------- analysis ---------------- */
+function etfAnalysis(e) {
+  const H = e.holdings, cur = e.cur;
+  const an = H.filter(h => e.metrics[h.sym]).map(h => ({ ...h, m: e.metrics[h.sym], r: e.perf[h.sym] ? e.perf[h.sym].y1 : null }));
+  // relative valuation: each name against the median of holdings valued on the same basis
+  const groups = {};
+  an.forEach(h => { const v = h.m[h.m.basis]; h.val = isNum(v) && v > 0 ? v : null; if (h.val) (groups[h.m.basis] = groups[h.m.basis] || []).push(h.val); });
+  const med = {}; Object.keys(groups).forEach(k => med[k] = median(groups[k]));
+  an.forEach(h => { h.med = med[h.m.basis]; h.rel = h.val && h.med && groups[h.m.basis].length >= 2 ? h.val / h.med - 1 : null; });
+  const ranked = an.filter(h => isNum(h.rel)).sort((a, b) => b.rel - a.rel);
+  const px = e.px, y1 = px.length ? growth(px[px.length - 1].close, px[0].close) : null;
+  const yStart = [...px].reverse().find(r => r.date < todayISO().slice(0, 4) + "-01-01");
+  const ytd = yStart && px.length ? growth(px[px.length - 1].close, yStart.close) : null;
+  const top10w = H.slice(0, 10).reduce((t, h) => t + h.w, 0);
+  const withR = an.filter(h => isNum(h.r));
+  const best = [...withR].sort((a, b) => b.r - a.r).slice(0, 3), worst = [...withR].sort((a, b) => a.r - b.r).slice(0, 3);
+  const contrib = [...withR].map(h => ({ ...h, c: h.w * h.r })).sort((a, b) => b.c - a.c);
+  return { an, ranked, med, groups, y1, ytd, top10w, best, worst, contrib, up: withR.filter(h => h.r > 0).length, nR: withR.length, medR: median(withR.map(h => h.r)), agg: etfAggregate(H.slice(0, etfN(e)), e.metrics) };
+}
+
+function etfInsights(e, A) {
+  const out = [], add = (tone, tag, title, body) => out.push({ tone, tag, title, body }), H = e.holdings;
+  if (H.length) add(A.top10w > 0.6 ? "neg" : A.top10w > 0.4 ? "neu" : "pos", "Concentration", `Top 10 holdings are ${pctPlain(A.top10w, 0)} of the fund`,
+    `${esc(H[0].sym)} is the largest position at <b>${pctPlain(H[0].w)}</b>${H[1] ? `, then ${esc(H[1].sym)} (${pctPlain(H[1].w)}) and ${H[2] ? esc(H[2].sym) + " (" + pctPlain(H[2].w) + ")" : ""}` : ""}. ${H.length} holdings in total. ${A.top10w > 0.6 ? "Performance depends heavily on a handful of names." : A.top10w > 0.4 ? "Moderately concentrated." : "Fairly diversified."}`);
+  if (A.best.length) add("pos", "Best performers · 12M", `${A.best[0].sym} leads, ${pct(A.best[0].r, 0)}`,
+    A.best.map(h => `<b>${esc(h.sym)}</b> ${pct(h.r, 0)} (${pctPlain(h.w)} weight)`).join(", ") + `. Largest contributors to the fund's return (weight × return, using today's weights): ${A.contrib.slice(0, 3).map(h => `${esc(h.sym)} ${pp(h.c)}`).join(", ")}.`);
+  if (A.worst.length) add(A.worst[0].r < 0 ? "neg" : "neu", "Worst performers · 12M", `${A.worst[0].sym} lags, ${pct(A.worst[0].r, 0)}`,
+    A.worst.map(h => `<b>${esc(h.sym)}</b> ${pct(h.r, 0)} (${pctPlain(h.w)} weight)`).join(", ") + `. Biggest drags: ${A.contrib.slice(-3).reverse().map(h => `${esc(h.sym)} ${pp(h.c)}`).join(", ")}.`);
+  if (A.nR) add(A.up / A.nR >= 0.6 ? "pos" : A.up / A.nR <= 0.4 ? "neg" : "neu", "Breadth", `${A.up} of ${A.nR} analysed holdings are up over 12 months`,
+    `The ETF returned <b>${pct(A.y1)}</b> against a median holding of ${pct(A.medR)}. ${isNum(A.y1) && isNum(A.medR) ? (A.y1 - A.medR > 0.05 ? "The fund beat its typical holding, so gains are <b>narrowly led</b> by the largest names." : A.medR - A.y1 > 0.05 ? "The typical holding did better than the fund: the biggest weights have <b>held it back</b>." : "Gains are broadly shared across holdings.") : ""}`);
+  const g = A.agg;
+  if (g.n) add(isNum(g.epsG) && g.epsG > 0 ? "pos" : "neu", "Fundamentals", `Weighted EPS growth ${pct(g.epsG)}, revenue ${pct(g.revG)}`,
+    `Across the ${g.n} analysed holdings (${pctPlain(g.cov, 0)} of the fund): TTM operating margin <b>${pctPlain(g.om)}</b> (${bps(g.omChg)} vs a year earlier). Growth is TTM vs the prior TTM, weighted by fund weight.`);
+  if (A.ranked.length) add("neu", "Valuation", `Weighted P/E ${mult(g.pe)}; richest ${A.ranked[0].sym}, cheapest ${A.ranked[A.ranked.length - 1].sym}`,
+    `<b>${esc(A.ranked[0].sym)}</b> trades ${pct(A.ranked[0].rel, 0)} vs the median ${VAL_BASIS[A.ranked[0].m.basis]} of holdings valued the same way; <b>${esc(A.ranked[A.ranked.length - 1].sym)}</b> ${pct(A.ranked[A.ranked.length - 1].rel, 0)}. Fund-level P/E is the weighted harmonic average of holdings with positive earnings.`);
+  if (e.sectors.length) add("neu", "Sector mix", `${e.sectors[0].name} ${pctPlain(e.sectors[0].w, 0)} of the fund`, e.sectors.slice(0, 5).map(s => `${esc(s.name)} ${pctPlain(s.w, 1)}`).join(", ") + ".");
+  return out;
+}
+
+/* ---------------- render ---------------- */
+function sparkSvg(pts, up) {
+  if (!pts || pts.length < 2) return `<div class="sparkna">no price data</div>`;
+  const W2 = 220, H2 = 56, ys = pts.map(p => p[1]), lo = Math.min(...ys), hi = Math.max(...ys), span = hi - lo || 1;
+  const X = i => i / (pts.length - 1) * W2, Y = v => 4 + (1 - (v - lo) / span) * (H2 - 8);
+  const d = pts.map((p, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("");
+  const col = up ? "var(--pos)" : "var(--neg)";
+  return `<svg viewBox="0 0 ${W2} ${H2}" preserveAspectRatio="none" class="spark" aria-hidden="true"><path d="${d}L${W2},${H2}L0,${H2}Z" fill="${col}" opacity=".12"/><path d="${d}" fill="none" stroke="${col}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+function renderEtf(e) {
+  const app = document.getElementById("app"), info = e.info || {}, p = e.prof || {}, cur = e.cur;
+  const A = etfAnalysis(e), ins = e.loading ? [] : etfInsights(e, A), tab = STATE.etfTab === "cmp" ? "cmp" : "ov";
+  const kpi = (lab, v, sub) => `<div class="kpi"><span class="eyebrow">${lab}</span><span class="v">${v}</span>${sub ? `<span class="d">${sub}</span>` : ""}</div>`;
+  const expR = isNum(info.expenseRatio) ? (info.expenseRatio > 0.05 ? info.expenseRatio / 100 : info.expenseRatio) : null;
+  app.innerHTML = `
+  <section class="co">
+    <div><div class="tick"><b>${esc(e.symbol)}</b><span class="etfbadge">ETF</span>${info.etfCompany ? `<span>${esc(info.etfCompany)}</span>` : ""}${p.exchange ? `<span>${esc(p.exchange)}</span>` : ""}</div>
+      <h1>${esc(info.name || p.companyName || e.symbol)}</h1></div>
+    <div class="price">${isNum(p.price) ? `<div class="p">${p.price.toFixed(2)} <span style="font-size:13px" class="${cls(p.changePercentage)}">${pct(isNum(p.changePercentage) ? p.changePercentage / 100 : null, 2)}</span></div>` : ""}
+      <div class="m">${isNum(info.assetsUnderManagement) ? "AUM " + money(info.assetsUnderManagement, cur) + " · " : ""}${e.holdings.length ? e.holdings.length + " holdings" : ""}</div></div>
+  </section>
+  <div class="tabs" role="tablist" aria-label="ETF views">
+    <button type="button" role="tab" data-etab="ov" aria-selected="${tab === "ov"}">ETF overview</button>
+    <button type="button" role="tab" data-etab="cmp" aria-selected="${tab === "cmp"}">Compare ETFs</button>
+  </div>
+  <div class="pane" id="etf-ov" ${tab === "ov" ? "" : "hidden"}>
+    ${e.loading ? `<div class="status" id="etfProg">${esc(e.progress || "Analysing holdings…")}</div>` : ""}
+    ${ins.length ? `<section class="sec"><div class="sec-h"><div><span class="eyebrow">What's driving the fund</span><h2>Key insights</h2></div><button type="button" class="btn ghost sm" id="etfInsAll">Expand all</button></div>
+      <div class="insights drivers">${ins.map(i => `<details class="ins ${i.tone}"><summary><span class="tag">${esc(i.tag)}</span><h3>${esc(i.title)}</h3><span class="chev" aria-hidden="true"></span></summary><p>${i.body}</p></details>`).join("")}</div></section>` : ""}
+    <section class="kpis" aria-label="Fund summary">
+      ${kpi("12-month return", `<span class="${cls(A.y1)}">${pct(A.y1)}</span>`, isNum(A.ytd) ? `<span>YTD ${chip(A.ytd)}</span>` : "")}
+      ${kpi("Expense ratio", expR != null ? (expR * 100).toFixed(2) + "%" : "—")}
+      ${kpi("Top 10 weight", pctPlain(A.top10w, 0), e.holdings[0] ? `<span>Largest ${esc(e.holdings[0].sym)} ${pctPlain(e.holdings[0].w)}</span>` : "")}
+      ${kpi("Weighted P/E", mult(A.agg.pe), A.agg.n ? `<span>${A.agg.n} names · ${pctPlain(A.agg.cov, 0)} of fund</span>` : "")}
+      ${kpi("EPS growth (wtd)", `<span class="${cls(A.agg.epsG)}">${pct(A.agg.epsG)}</span>`, isNum(A.agg.revG) ? `<span>Revenue ${pct(A.agg.revG)}</span>` : "")}
+      ${kpi("Operating margin (wtd)", pctPlain(A.agg.om), isNum(A.agg.omChg) ? `<span>${chip(A.agg.omChg, bps)} YoY</span>` : "")}
+    </section>
+    ${etfPriceSection(e)}
+    ${etfTop10Section(e, A)}
+    ${etfCompositionSection(e, A)}
+    ${etfValuationSection(e, A)}
+    <footer>Data: Financial Modeling Prep. Holdings and weights as reported by FMP for the fund. Holding fundamentals are trailing twelve months (TTM) vs the prior TTM; 12-month returns are price returns. Analysis covers the top ${etfN(e)} holdings by weight; results are cached in this browser for the day.</footer>
+  </div>
+  <div class="pane" id="etf-cmp" ${tab === "cmp" ? "" : "hidden"}></div>`;
+  wireEtf(e);
+  // candlestick chart sized to its panel
+  const box = document.getElementById("etfPx");
+  if (box && e.px.length) { const c = candleChart(e.px, { width: box.clientWidth - 4, title: e.symbol + " 12-month price" }); box.innerHTML = c.svg; attachCandleHover(box, e.px, c.geom, document.getElementById("etfPxRead"), e.px.length - 1); }
+  if (tab === "cmp") renderEtfCompare(e);
+}
+
+function etfPriceSection(e) {
+  if (!e.px.length) return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Price</span><h2>How it's trading</h2></div></div><p class="status">No price history returned.</p></section>`;
+  const px = e.px, last = px[px.length - 1], hi = Math.max(...px.map(r => r.high)), lo = Math.min(...px.map(r => r.low));
+  const ma = n => px.length >= n ? px.slice(-n).reduce((t, r) => t + r.close, 0) / n : null, m50 = ma(50), m200 = ma(200);
+  return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Price · daily OHLC</span><h2>How it's trading · 12 months</h2>
+      <p>Close ${last.close.toFixed(2)}: ${pct(growth(last.close, hi))} from the 12-month high (${hi.toFixed(2)}), ${pct(growth(last.close, lo))} above the low (${lo.toFixed(2)}).${isNum(m50) ? ` ${last.close >= m50 ? "Above" : "Below"} its 50-day average (${m50.toFixed(2)})` : ""}${isNum(m200) ? ` and ${last.close >= m200 ? "above" : "below"} its 200-day (${m200.toFixed(2)}).` : "."}</p></div></div>
+    <div class="panel"><div class="pxread" id="etfPxRead"></div><div class="chart pxchart" id="etfPx"></div></div></section>`;
+}
+
+function etfTop10Section(e, A) {
+  if (!e.holdings.length) return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Holdings</span><h2>Top 10 holdings</h2></div></div><p class="status err">Couldn't load holdings: ${esc(e.holdErr || "no data")}. ETF holdings may need a higher FMP plan; the price chart above still works.</p></section>`;
+  const top = e.holdings.slice(0, 10);
+  return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Top 10 by weight · ${pctPlain(A.top10w, 0)} of the fund</span><h2>Top 10 holdings · 12 months</h2>
+      <p>Each card shows the 12-month price path and return. Click a name to open it in the single-stock view.</p></div></div>
+    <div class="sparkgrid">${top.map((h, k) => { const pf = e.perf[h.sym], r = pf ? pf.y1 : null, rel = isNum(r) && isNum(A.y1) ? r - A.y1 : null;
+      return `<div class="sparkcard"><div class="sch"><button type="button" class="linkbtn" data-open="${esc(h.sym)}">${k + 1}. ${esc(h.sym)}</button><span class="w">${pctPlain(h.w)}</span></div>
+        <div class="scn">${esc(h.name)}</div>${e.spark[h.sym] ? sparkSvg(e.spark[h.sym], !(r < 0)) : `<div class="skel" style="height:56px"></div>`}
+        <div class="scf"><b class="${cls(r)}">${pct(r)}</b><span>${isNum(rel) ? `${pp(rel)} vs ${esc(e.symbol)}` : ""}</span></div></div>`; }).join("")}</div></section>`;
+}
+
+function etfCompositionSection(e, A) {
+  if (!e.holdings.length && !e.sectors.length) return "";
+  const showAll = !!STATE.etfAllHold, H = showAll ? e.holdings : e.holdings.slice(0, 15);
+  const tbl = e.holdings.length ? `<div class="tbl"><table><thead><tr><th>Holding</th><th>Weight</th><th>Sector</th><th>12M return</th><th>Valuation</th></tr></thead><tbody>
+      ${H.map((h, k) => { const m = e.metrics[h.sym], pf = e.perf[h.sym], v = m ? m[m.basis] : null;
+        return `<tr><td><button type="button" class="linkbtn" data-open="${esc(h.sym)}">${k + 1}. ${esc(h.sym)}</button> <span class="cn">${esc(h.name)}</span></td><td>${pctPlain(h.w, 2)}</td><td class="na">${m ? esc(m.sector || "—") : ""}</td><td class="${cls(pf && pf.y1)}">${pf ? pct(pf.y1) : ""}</td><td>${m ? `${VAL_BASIS[m.basis]} ${mult(v)}` : ""}</td></tr>`; }).join("")}
+    </tbody></table></div>${e.holdings.length > 15 ? `<button type="button" class="more" id="etfAllHold">${showAll ? "Show top 15 only ▴" : `Show all ${e.holdings.length} holdings ▾`}</button>` : ""}` : "";
+  const sec = e.sectors.length ? `<div class="panel"><h4>Sector weights</h4>${rankBars(e.sectors.slice(0, 11).map(s => ({ label: s.name, v: s.w })), v => pctPlain(v, 1))}</div>` : "";
+  return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Composition</span><h2>What's in the fund</h2></div></div>
+    <div class="grid2 etfcomp"><div class="panel"><h4>Holdings by weight</h4>${tbl}</div>${sec}</div></section>`;
+}
+
+function etfValuationSection(e, A) {
+  if (!e.holdings.length) return "";
+  if (e.loading && !A.an.length) return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Valuation</span><h2>Most expensive and cheapest holdings</h2></div></div><div class="skel"></div></section>`;
+  const opts = [[10, "Top 10"], [20, "Top 20"], [40, "Top 40"], [999, "All"]].filter(([n]) => n === 999 || n < e.holdings.length);
+  const want = STATE.etfN || +store.get("etfN") || 20, curN = want >= e.holdings.length ? 999 : want;
+  const row = h => `<tr><td><button type="button" class="linkbtn" data-open="${esc(h.sym)}">${esc(h.sym)}</button> <span class="cn">${esc(h.m.name)}</span></td>
+    <td>${VAL_BASIS[h.m.basis]} <b>${mult(h.val)}</b></td><td class="${h.rel > 0 ? "dn" : "up"}">${pct(h.rel, 0)}</td><td class="${cls(h.m.revG)}">${pct(h.m.revG)}</td><td>${pctPlain(h.m.om)}</td><td class="${cls(h.m.omChg)}">${bps(h.m.omChg)}</td><td class="${cls(h.r)}">${pct(h.r)}</td><td>${pctPlain(h.w)}</td></tr>`;
+  const head = `<thead><tr><th>Holding</th><th>Valuation</th><th>vs peers' median</th><th>Rev growth</th><th>Op. margin</th><th>Margin chg</th><th>12M</th><th>Weight</th></tr></thead>`;
+  const exp = A.ranked.slice(0, 5), chp = A.ranked.slice(-5).reverse();
+  const basisUsed = Object.keys(A.groups).map(k => `${VAL_BASIS[k]} (${A.groups[k].length} names, median ${mult(A.med[k])})`).join(" · ");
+  const pts = A.an.filter(h => isNum(h.rel) && isNum(h.m.revG)).map(h => ({ x: Math.max(-0.5, Math.min(1, h.m.revG)), y: 1 + h.rel, label: h.sym }));
+  return `<section class="sec"><div class="sec-h"><div><span class="eyebrow">Valuation within the fund</span><h2>Most expensive and cheapest holdings</h2>
+      <p>Each company is valued on the metric that suits its industry: <b>P/B</b> for banks and insurers, <b>EV/EBIT</b> for capital-intensive sectors (energy, industrials, materials, utilities, telecoms), <b>EV/Sales</b> for software and internet, <b>EV/EBITDA</b> for real estate and <b>P/E</b> otherwise. It's then compared with the median of fund holdings valued the same way.</p></div>
+      <div class="seg" role="group" aria-label="Holdings to analyse">${opts.map(([n, l]) => `<button type="button" data-etfn="${n}" aria-pressed="${curN === n}">${l}</button>`).join("")}</div></div>
+    <p class="note">Bases in use: ${basisUsed || "—"}. Growth and margins are TTM vs the prior TTM. Margin change in basis points.${e.loading ? ` <b id="etfProg2">${esc(e.progress)}</b>` : ""}</p>
+    <div class="panel"><h4>Most expensive vs peers <small>top 5</small></h4><div class="tbl"><table>${head}<tbody>${exp.map(row).join("") || `<tr><td colspan="8">—</td></tr>`}</tbody></table></div></div>
+    <div class="panel"><h4>Cheapest vs peers <small>top 5</small></h4><div class="tbl"><table>${head}<tbody>${chp.map(row).join("") || `<tr><td colspan="8">—</td></tr>`}</tbody></table></div></div>
+    ${pts.length >= 3 ? `<div class="panel"><h4>Valuation vs revenue growth <small>valuation as a multiple of its peer median (1.0× = in line); growth capped at +100%</small></h4><div class="chart">${scatterChart(pts, "Revenue growth (TTM YoY)", "× peer-median valuation", v => pct(v, 0), v => v.toFixed(1) + "×")}</div></div>` : ""}
+    <details class="panel allh"><summary><h4>All analysed holdings (${A.an.length})</h4></summary><div class="tbl"><table>${head}<tbody>${[...A.an].sort((a, b) => b.w - a.w).map(h => row(h)).join("")}</tbody></table></div></details>
+  </section>`;
+}
+
+/* ---------------- compare tab ---------------- */
+const cmpListKey = s => "etfcmp:" + s;
+function cmpList(e) {
+  try { const s = JSON.parse(store.get(cmpListKey(e.symbol)) || "null"); if (Array.isArray(s)) return s; } catch (er) {}
+  return (RELATED_ETFS[e.symbol] || ["SPY", "QQQ", "IWM"]).filter(s => s !== e.symbol);
+}
+async function etfSummary(sym, N, onStep) {
+  const [prof, info, hold, pf] = await Promise.all([
+    api("profile", { symbol: sym }).then(x => x[0] || null).catch(() => null),
+    api("etf/info", { symbol: sym }).then(x => Array.isArray(x) ? x[0] || null : x).catch(() => null),
+    api("etf/holdings", { symbol: sym }).catch(() => []),
+    perf12m(sym).catch(() => null)
+  ]);
+  if (!prof && !info) throw new Error("not found");
+  const H = normHoldings(hold, sym), metrics = {};
+  if (!isEtfProfile(prof) && !info && !H.length) throw new Error("not an ETF");
+  const res = await pool(H.slice(0, N).map(h => h.sym), 5, s => holdingMetrics(s), onStep);
+  H.slice(0, N).forEach((h, k) => { if (res[k]) metrics[h.sym] = res[k]; });
+  const ag = etfAggregate(H.slice(0, N), metrics);
+  const expR = info && isNum(info.expenseRatio) ? (info.expenseRatio > 0.05 ? info.expenseRatio / 100 : info.expenseRatio) : null;
+  return { sym, name: (info && info.name) || (prof && prof.companyName) || sym, isEtf: isEtfProfile(prof), aum: info && info.assetsUnderManagement, expR, y1: pf && pf.y1, ytd: pf && pf.ytd, nHold: H.length, top: H.slice(0, 3).map(h => h.sym), ...ag };
+}
+
+async function renderEtfCompare(e) {
+  const pane = document.getElementById("etf-cmp"); if (!pane) return;
+  const list = cmpList(e), N = STATE.etfCmpN || +store.get("etfCmpN") || 10, syms = [e.symbol, ...list.filter(s => s !== e.symbol)];
+  const tok = (STATE.cmpTok = (STATE.cmpTok || 0) + 1);
+  const controls = `<section class="sec peerctl"><div class="sec-h"><div><span class="eyebrow">ETF comparison</span><h2>Compare ${esc(e.symbol)} with other ETFs</h2>
+      <p>Fundamentals are weighted averages of each ETF's top ${N} holdings (TTM vs prior TTM); P/E, P/B and EV/Sales are weighted harmonic averages, the standard way to value an index. Add any ETF, related or not.</p></div>
+      <div class="seg" role="group" aria-label="Holdings per ETF">${[10, 20, 30].map(n => `<button type="button" data-cmpn="${n}" aria-pressed="${N === n}">Top ${n}</button>`).join("")}</div></div>
+    <div class="chips"><span class="chipx main">${esc(e.symbol)}</span>${list.map(s => `<span class="chipx">${esc(s)}<button type="button" data-cmprm="${esc(s)}" aria-label="Remove ${esc(s)}">×</button></span>`).join("")}
+      <form class="addpeer" id="cmpAddForm" autocomplete="off"><input id="cmpAddInput" placeholder="Add ETF, e.g. VGT" aria-label="Add an ETF" spellcheck="false"><button class="btn ghost" type="submit" style="height:34px">Add</button><div class="sugg" id="cmpAddSugg" hidden></div></form>
+      <button class="btn ghost" type="button" id="cmpReset" style="height:34px">Reset</button></div></section>`;
+  const cached = STATE.cmpData && STATE.cmpData.key === syms.join(",") + ":" + N ? STATE.cmpData.rows : null;
+  if (!cached) {
+    pane.innerHTML = controls + `<div class="status" id="cmpProg">Loading ${syms.length} ETFs…</div><div class="skel"></div>`;
+    wireEtfCompare(e);
+    let doneH = 0; const totH = syms.length * N;
+    const res = await pool(syms, 2, s => etfSummary(s, N, () => { doneH++; const el = document.getElementById("cmpProg"); if (el) el.textContent = `Analysing holdings… ${Math.min(doneH, totH)} of about ${totH}`; }));
+    if (tok !== STATE.cmpTok || STATE.etf !== e) return;
+    STATE.cmpData = { key: syms.join(",") + ":" + N, rows: res.map((r, k) => r || { sym: syms[k], err: true }) };
+  }
+  const rows = STATE.cmpData.rows, ok = rows.filter(r => !r.err), me = ok.find(r => r.sym === e.symbol);
+  const others = ok.filter(r => r !== me), medOf = f => median(others.map(r => r[f]).filter(isNum));
+  const tint = (v, m, hi = true) => !isNum(v) || !isNum(m) || v === m ? "" : (hi ? v > m : v < m) ? "better" : "worse";
+  const gpe = r => isNum(r.pe) && isNum(r.epsG) && r.epsG > 0 ? r.pe / (r.epsG * 100) : null;
+  const tr = r => r.err ? `<tr><td><b>${esc(r.sym)}</b></td><td colspan="12" class="na">Couldn't load (not an ETF on FMP, or no data)</td></tr>` :
+    `<tr class="${r === me ? "me" : ""}"><td><b>${esc(r.sym)}</b> <span class="cn">${esc(r.name)}</span></td><td>${money(r.aum, "USD")}</td><td>${r.expR != null ? (r.expR * 100).toFixed(2) + "%" : "—"}</td>
+      <td class="${cls(r.y1)}">${pct(r.y1)}</td><td class="${cls(r.ytd)}">${pct(r.ytd)}</td>
+      <td class="${tint(r.revG, medOf("revG"))}">${pct(r.revG)}</td><td class="${tint(r.epsG, medOf("epsG"))}">${pct(r.epsG)}</td><td class="${tint(r.om, medOf("om"))}">${pctPlain(r.om)}</td><td class="${tint(r.omChg, medOf("omChg"))}">${bps(r.omChg)}</td>
+      <td class="${tint(r.pe, medOf("pe"), false)}">${mult(r.pe)}</td><td>${mult(r.pb)}</td><td>${mult(r.evSales)}</td><td>${isNum(gpe(r)) ? gpe(r).toFixed(2) : "—"}</td><td class="na">${pctPlain(r.cov, 0)}</td></tr>`;
+  // insights
+  const ins = [];
+  const by = (f, hi = true) => [...ok].filter(r => isNum(r[f])).sort((a, b) => hi ? b[f] - a[f] : a[f] - b[f]);
+  const fastest = by("epsG")[0], cheapest = by("pe", false)[0], bestG = [...ok].filter(r => isNum(gpe(r))).sort((a, b) => gpe(a) - gpe(b))[0], mom = by("y1")[0];
+  if (me && isNum(me.pe) && isNum(medOf("pe"))) { const prem = me.pe / medOf("pe") - 1; ins.push(["neu", "Valuation", `${e.symbol} at ${mult(me.pe)} P/E, ${pct(prem, 0)} vs the others' median`, `Others' median P/E ${mult(medOf("pe"))}. ${isNum(me.epsG) && isNum(medOf("epsG")) ? `Its weighted EPS growth is ${pct(me.epsG)} vs a median ${pct(medOf("epsG"))}, so the ${prem > 0 ? "premium is " + (me.epsG > medOf("epsG") ? "backed by faster growth" : "not backed by faster growth") : "discount " + (me.epsG > medOf("epsG") ? "comes despite faster growth" : "matches slower growth")}.` : ""}`]); }
+  if (fastest) ins.push(["pos", "Earnings growth", `${fastest.sym} has the fastest EPS growth, ${pct(fastest.epsG)}`, ok.filter(r => isNum(r.epsG)).sort((a, b) => b.epsG - a.epsG).map(r => `${esc(r.sym)} ${pct(r.epsG)}`).join(", ") + "."]);
+  if (bestG) ins.push(["pos", "Growth-adjusted", `${bestG.sym} is cheapest relative to its growth`, `P/E ÷ EPS growth: ${ok.filter(r => isNum(gpe(r))).sort((a, b) => gpe(a) - gpe(b)).map(r => `${esc(r.sym)} ${gpe(r).toFixed(2)}`).join(", ")}. Lower means you pay less per point of earnings growth.`]);
+  if (cheapest && cheapest !== bestG) ins.push(["neu", "Cheapest", `${cheapest.sym} has the lowest P/E, ${mult(cheapest.pe)}`, `${isNum(cheapest.epsG) ? `Its EPS growth is ${pct(cheapest.epsG)}.` : ""}`]);
+  if (mom) ins.push([mom.y1 > 0 ? "pos" : "neg", "Momentum · 12M", `${mom.sym} is the best performer, ${pct(mom.y1)}`, ok.filter(r => isNum(r.y1)).sort((a, b) => b.y1 - a.y1).map(r => `${esc(r.sym)} ${pct(r.y1)}`).join(", ") + "."]);
+  const pts = ok.filter(r => isNum(r.pe) && isNum(r.epsG)).map(r => ({ x: Math.max(-0.5, Math.min(1, r.epsG)), y: r.pe, label: r.sym, me: r === me }));
+  pane.innerHTML = controls + `
+    ${ins.length ? `<section class="sec"><div class="insights drivers">${ins.map(([t, tag, title, body]) => `<details class="ins ${t}" open><summary><span class="tag">${esc(tag)}</span><h3>${esc(title)}</h3><span class="chev" aria-hidden="true"></span></summary><p>${body}</p></details>`).join("")}</div></section>` : ""}
+    <section class="sec"><div class="tbl"><table class="peers"><thead>
+      <tr class="gh"><th></th><th colspan="4">Fund</th><th colspan="4">Fundamentals (weighted)</th><th colspan="4">Valuation</th><th></th></tr>
+      <tr><th>ETF</th><th>AUM</th><th>Expense</th><th>12M</th><th>YTD</th><th>Rev growth</th><th>EPS growth</th><th>Op. margin</th><th>Margin chg</th><th>P/E</th><th>P/B</th><th>EV/Sales</th><th>P/E ÷ growth</th><th>Coverage</th></tr></thead>
+      <tbody>${rows.map(tr).join("")}</tbody></table></div>
+      <p class="note">Green/red mark better or worse than the median of the other ETFs. Coverage is the share of each fund's weight included in the fundamentals. Bank-heavy funds are on net revenue; P/B is the more meaningful multiple for them.</p></section>
+    <section class="sec"><div class="grid2">
+      <div class="panel"><h4>P/E vs EPS growth <small>weighted, top ${N} holdings</small></h4><div class="chart">${pts.length >= 2 ? scatterChart(pts, "EPS growth (TTM YoY)", "P/E", v => pct(v, 0), v => v.toFixed(0) + "×") : `<p class="note">Not enough data.</p>`}</div></div>
+      <div class="panel"><h4>12-month return</h4>${rankBars(ok.map(r => ({ label: r.sym, v: r.y1, me: r === me })), v => pct(v))}</div>
+    </div></section>`;
+  wireEtfCompare(e);
+}
+
+function wireEtfCompare(e) {
+  const pane = document.getElementById("etf-cmp"); if (!pane) return;
+  const save = l => { store.set(cmpListKey(e.symbol), JSON.stringify(l)); STATE.cmpData = null; renderEtfCompare(e); };
+  pane.querySelectorAll("[data-cmprm]").forEach(b => b.addEventListener("click", () => save(cmpList(e).filter(s => s !== b.dataset.cmprm))));
+  pane.querySelectorAll("[data-cmpn]").forEach(b => b.addEventListener("click", () => { STATE.etfCmpN = +b.dataset.cmpn; store.set("etfCmpN", b.dataset.cmpn); STATE.cmpData = null; renderEtfCompare(e); }));
+  const rs = document.getElementById("cmpReset"); if (rs) rs.addEventListener("click", () => { store.set(cmpListKey(e.symbol), ""); STATE.cmpData = null; renderEtfCompare(e); });
+  const inp = document.getElementById("cmpAddInput"), form = document.getElementById("cmpAddForm");
+  const add = s => { s = String(s || "").trim().toUpperCase(); const l = cmpList(e); if (!s || s === e.symbol || l.includes(s)) { if (inp) inp.value = ""; return; } save([...l, s]); };
+  if (inp) { attachSearch(inp, document.getElementById("cmpAddSugg"), add); form.addEventListener("submit", ev => { ev.preventDefault(); add(inp.value); }); }
+}
+
+function wireEtf(e) {
+  const app = document.getElementById("app");
+  app.querySelectorAll("[data-etab]").forEach(b => b.addEventListener("click", () => {
+    STATE.etfTab = b.dataset.etab;
+    app.querySelectorAll("[data-etab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    document.getElementById("etf-ov").hidden = STATE.etfTab !== "ov"; document.getElementById("etf-cmp").hidden = STATE.etfTab !== "cmp";
+    if (STATE.etfTab === "cmp") renderEtfCompare(e);
+  }));
+  app.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { window.scrollTo(0, 0); load(b.dataset.open); }));
+  app.querySelectorAll("[data-etfn]").forEach(b => b.addEventListener("click", () => { STATE.etfN = +b.dataset.etfn; store.set("etfN", b.dataset.etfn); const y = window.scrollY; renderEtf(e); window.scrollTo(0, y); loadEtfHoldings(e); }));
+  const all = document.getElementById("etfAllHold"); if (all) all.addEventListener("click", () => { STATE.etfAllHold = !STATE.etfAllHold; const y = window.scrollY; renderEtf(e); window.scrollTo(0, y); });
+  const dr = app.querySelectorAll("#etf-ov .drivers details"), ib = document.getElementById("etfInsAll");
+  if (ib) ib.addEventListener("click", () => { const open = ![...dr].every(x => x.open); dr.forEach(x => x.open = open); ib.textContent = open ? "Collapse all" : "Expand all"; });
+}
+
 /* ============ search / UI wiring ============ */
 (function wire() {
   const input = document.getElementById("tickerInput"), sugg = document.getElementById("sugg");
@@ -2868,7 +3284,12 @@ async function askLocal(question) {
     if (STATE.d) { const y = window.scrollY; render(STATE.d); window.scrollTo(0, y); }
   }));
   let rsT = null, lastW = window.innerWidth;
-  window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (window.innerWidth !== lastW && STATE.px && STATE.px.open) { lastW = window.innerWidth; renderPx(false); } }, 250); });
+  window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => {
+    if (window.innerWidth === lastW) return;
+    lastW = window.innerWidth;
+    if (STATE.px && STATE.px.open) renderPx(false);
+    if (STATE.etf && !STATE.d) { const y = window.scrollY; renderEtf(STATE.etf); window.scrollTo(0, y); }
+  }, 250); });
   document.getElementById("chatFab").addEventListener("click", () => { STATE.chatOpen = true; renderChat(); });
   document.getElementById("chatPane").addEventListener("click", e => { const b = e.target.closest("[data-more]"); if (!b) return; const t = CHAT.view[+b.dataset.more]; if (t) { t.expanded = !t.expanded; renderChatTurn(t); } });
   document.addEventListener("keydown", e => { if (e.key === "Escape" && STATE.chatOpen && !CHAT.busy) { STATE.chatOpen = false; renderChat(); } });
